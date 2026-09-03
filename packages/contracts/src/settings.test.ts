@@ -50,6 +50,20 @@ describe("ClaudeSettings auto-compaction", () => {
   });
 });
 
+describe("ClaudeSettings long-horizon context", () => {
+  it("is off unless the instance opts in", () => {
+    expect(decodeClaudeSettings({}).lhc).toBe(false);
+    expect(decodeClaudeSettings({ lhc: true }).lhc).toBe(true);
+  });
+
+  it("accepts the flag at the settings patch boundary", () => {
+    expect(decodeServerSettingsPatch({ providers: { claudeAgent: { lhc: true } } })).toBeDefined();
+    expect(() =>
+      decodeServerSettingsPatch({ providers: { claudeAgent: { lhc: "yes" } } }),
+    ).toThrow();
+  });
+});
+
 describe("ClientSettings word wrap", () => {
   it("defaults word wrap on", () => {
     expect(decodeClientSettings({}).wordWrap).toBe(true);

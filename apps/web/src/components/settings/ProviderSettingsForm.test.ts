@@ -68,6 +68,7 @@ describe("ProviderSettingsForm helpers", () => {
       "binaryPath",
       "homePath",
       "autoCompactWindow",
+      "lhc",
       "launchArgs",
     ]);
   });
