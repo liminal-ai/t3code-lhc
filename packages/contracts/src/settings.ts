@@ -523,9 +523,21 @@ export const ClaudeSettings = makeProviderSettingsSchema(
         },
       }),
     ),
+    // Long-horizon context: the instance's threads run through the claude-lhc
+    // sidecar, which records every message into LHC and rebuilds the model's
+    // context from that record instead of letting Claude Code compact.
+    lhc: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(false)),
+      Schema.annotateKey({
+        title: "Long-horizon context (LHC)",
+        description:
+          "Run threads through the claude-lhc sidecar: LHC keeps the record and rebuilds context on compaction. Auto-compact after becomes the LHC trigger.",
+        providerSettingsForm: { control: "switch" },
+      }),
+    ),
   },
   {
-    order: ["binaryPath", "homePath", "autoCompactWindow", "launchArgs"],
+    order: ["binaryPath", "homePath", "autoCompactWindow", "lhc", "launchArgs"],
   },
 );
 export type ClaudeSettings = typeof ClaudeSettings.Type;
@@ -1025,6 +1037,7 @@ const ClaudeSettingsPatch = Schema.Struct({
   autoCompactWindow: Schema.optionalKey(
     TrimmedString.check(Schema.isPattern(CLAUDE_AUTO_COMPACT_WINDOW_PATTERN)),
   ),
+  lhc: Schema.optionalKey(Schema.Boolean),
 });
 
 const CursorSettingsPatch = Schema.Struct({
