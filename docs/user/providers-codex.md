@@ -121,6 +121,16 @@ Shadow home path: ~/.codex_p
 The important part is that both providers use the same `CODEX_HOME path`, but only the second one
 has a `Shadow home path`.
 
+## Updating A Custom Codex Build
+
+Each Codex provider has an `Update source` setting. Leave it on `Stock (OpenAI)` for a normal
+install: T3 Code checks the latest release and updates through the package manager that installed
+Codex.
+
+Choose `LHC` when the provider's `Binary path` points at an LHC build. The Update button then runs
+that binary's own `update` command. T3 Code does not look up a latest release for LHC builds, so
+the provider row shows the installed version with no "behind" badge, and Update stays available.
+
 ## Which Account Am I Using?
 
 Open Settings and look at the provider row.

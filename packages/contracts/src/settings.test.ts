@@ -307,6 +307,17 @@ describe("ServerSettings.providerInstances (slice-2 invariant)", () => {
     expect(decoded.providers.codex.enabled).toBe(true);
   });
 
+  it("defaults a Codex instance to stock updates and accepts an explicit LHC choice", () => {
+    expect(decodeServerSettings({}).providers.codex.updateSource).toBe("stock");
+    expect(
+      decodeServerSettings({ providers: { codex: { updateSource: "lhc" } } }).providers.codex
+        .updateSource,
+    ).toBe("lhc");
+    expect(() =>
+      decodeServerSettings({ providers: { codex: { updateSource: "nightly" } } }),
+    ).toThrow();
+  });
+
   it("decodes a multi-instance map mixing first-party and fork drivers", () => {
     const decoded = decodeServerSettings({
       providerInstances: {

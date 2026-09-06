@@ -418,6 +418,21 @@ export function makeProviderSettingsSchema<const Fields extends Schema.Struct.Fi
   );
 }
 
+/**
+ * Where a Codex instance's binary comes from, which decides how Update works.
+ * Stock resolves the package manager that installed `@openai/codex`. LHC runs
+ * the configured binary's own `update` command and skips the npm latest-version
+ * lookup, so the badge stays unknown while Update stays available.
+ */
+export const CODEX_UPDATE_SOURCES = [
+  { value: "stock", label: "Stock (OpenAI)" },
+  { value: "lhc", label: "LHC" },
+] as const satisfies ReadonlyArray<ProviderSettingsFormOption>;
+export const CodexUpdateSource = Schema.Literals(
+  CODEX_UPDATE_SOURCES.map((source) => source.value),
+);
+export type CodexUpdateSource = typeof CodexUpdateSource.Type;
+
 export const CodexSettings = makeProviderSettingsSchema(
   {
     enabled: Schema.Boolean.pipe(
@@ -461,13 +476,26 @@ export const CodexSettings = makeProviderSettingsSchema(
         description: "Additional CLI arguments passed to codex app-server on session start.",
       }),
     ),
+    updateSource: CodexUpdateSource.pipe(
+      Schema.withDecodingDefault(Effect.succeed("stock" as const)),
+      Schema.annotateKey({
+        title: "Update source",
+        description:
+          "Stock updates through the package manager that installed Codex. LHC runs the binary's own update command.",
+        providerSettingsForm: {
+          control: "select",
+          options: CODEX_UPDATE_SOURCES,
+          clearWhenEmpty: "omit",
+        },
+      }),
+    ),
     customModels: Schema.Array(Schema.String).pipe(
       Schema.withDecodingDefault(Effect.succeed([])),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
   },
   {
-    order: ["binaryPath", "homePath", "shadowHomePath", "launchArgs"],
+    order: ["binaryPath", "homePath", "shadowHomePath", "launchArgs", "updateSource"],
   },
 );
 export type CodexSettings = typeof CodexSettings.Type;
@@ -1048,6 +1076,7 @@ const CodexSettingsPatch = Schema.Struct({
   homePath: Schema.optionalKey(TrimmedString),
   shadowHomePath: Schema.optionalKey(TrimmedString),
   launchArgs: Schema.optionalKey(TrimmedString),
+  updateSource: Schema.optionalKey(CodexUpdateSource),
   customModels: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 

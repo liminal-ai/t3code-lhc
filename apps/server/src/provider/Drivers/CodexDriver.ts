@@ -21,7 +21,7 @@
  *
  * @module provider/Drivers/CodexDriver
  */
-import { CodexSettings, ProviderDriverKind } from "@t3tools/contracts";
+import { CodexSettings, type CodexUpdateSource, ProviderDriverKind } from "@t3tools/contracts";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -56,6 +56,8 @@ import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment
 import {
   enrichProviderSnapshotWithVersionAdvisory,
   makePackageManagedProviderMaintenanceResolver,
+  makeProviderMaintenanceCapabilities,
+  type ProviderMaintenanceCapabilitiesResolver,
   resolveProviderMaintenanceCapabilitiesEffect,
 } from "../providerMaintenance.ts";
 import {
@@ -71,12 +73,32 @@ import {
 const decodeCodexSettings = Schema.decodeSync(CodexSettings);
 
 const DRIVER_KIND = ProviderDriverKind.make("codex");
-const UPDATE = makePackageManagedProviderMaintenanceResolver({
+const STOCK_UPDATE = makePackageManagedProviderMaintenanceResolver({
   provider: DRIVER_KIND,
   npmPackageName: "@openai/codex",
   homebrewFormula: "codex",
   nativeUpdate: null,
 });
+// An LHC build updates itself, like cursor-agent: no npm package to compare
+// against, so the version badge stays unknown while Update runs the configured
+// binary's own `update` command.
+const LHC_UPDATE: ProviderMaintenanceCapabilitiesResolver = {
+  resolve: (options) =>
+    makeProviderMaintenanceCapabilities({
+      provider: DRIVER_KIND,
+      packageName: null,
+      updateExecutable: options?.binaryPath?.trim() || "codex",
+      updateArgs: ["update"],
+      updateLockKey: "codex-lhc",
+    }),
+};
+
+/** Picks the maintenance resolver for an instance from its `updateSource` setting. */
+export function codexMaintenanceResolver(
+  updateSource: CodexUpdateSource,
+): ProviderMaintenanceCapabilitiesResolver {
+  return updateSource === "lhc" ? LHC_UPDATE : STOCK_UPDATE;
+}
 
 /**
  * Services the driver needs to materialize an instance. Surfaced as the
@@ -138,10 +160,10 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
         enabled,
         homePath: homeLayout.effectiveHomePath ?? "",
       } satisfies CodexSettings;
-      const maintenanceCapabilities = yield* resolveProviderMaintenanceCapabilitiesEffect(UPDATE, {
-        binaryPath: effectiveConfig.binaryPath,
-        env: processEnv,
-      });
+      const maintenanceCapabilities = yield* resolveProviderMaintenanceCapabilitiesEffect(
+        codexMaintenanceResolver(effectiveConfig.updateSource),
+        { binaryPath: effectiveConfig.binaryPath, env: processEnv },
+      );
 
       // `makeCodexAdapter` and `makeCodexTextGeneration` have `never` error
       // channels at construction time — their failure modes are all on the

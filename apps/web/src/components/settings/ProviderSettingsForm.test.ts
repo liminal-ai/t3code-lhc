@@ -19,7 +19,18 @@ describe("ProviderSettingsForm helpers", () => {
       "homePath",
       "shadowHomePath",
       "launchArgs",
+      "updateSource",
     ]);
+  });
+
+  it("derives a select control with Stock first for the Codex update source", () => {
+    const codex = DRIVER_OPTION_BY_VALUE[ProviderDriverKind.make("codex")];
+    const updateSource = deriveProviderSettingsFields(codex!).find(
+      (field) => field.key === "updateSource",
+    );
+
+    expect(updateSource).toMatchObject({ control: "select", clearWhenEmpty: "omit" });
+    expect(updateSource?.options?.map((option) => option.value)).toEqual(["stock", "lhc"]);
   });
 
   it("sources labels and descriptions from schema annotations", () => {
