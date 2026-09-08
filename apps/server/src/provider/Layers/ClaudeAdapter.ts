@@ -4396,7 +4396,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         canUseTool,
         onUserDialog,
         supportedDialogKinds: ["resume_return"],
-        env: claudeEnvironment,
+        // T3CODE_THREAD_ID lets lhc-agent resolve a t3code-hosted seat's sender identity
+        // (from-header brief item 3). The sidecar spreads env into the Claude Code child verbatim.
+        env: { ...claudeEnvironment, T3CODE_THREAD_ID: threadId },
         additionalDirectories,
         ...(Object.keys(extraArgs).length > 0 ? { extraArgs } : {}),
         ...(mcpSession
