@@ -26,7 +26,17 @@ import * as ProviderSessionRuntime from "../persistence/ProviderSessionRuntime.t
 import * as RepositoryIdentityResolver from "../project/RepositoryIdentityResolver.ts";
 import { PersistedServerRuntimeState } from "../serverRuntimeState.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
-import { deriveImportedThreadId, ImportThreadServerLiveError, uuidV5 } from "./thread.ts";
+import {
+  FIXTURE_SOURCE_THREAD_ID,
+  makeFixtureThread,
+  writeLhcSourceDatabase,
+} from "./lhcSourceFixture.ts";
+import {
+  deriveImportedThreadId,
+  ImportThreadServerLiveError,
+  ImportThreadSourceError,
+  uuidV5,
+} from "./thread.ts";
 
 const CliRuntimeLayer = Layer.mergeAll(NodeServices.layer, NetService.layer);
 
@@ -422,6 +432,204 @@ describe("t3 thread import", () => {
         }),
       );
       assert.isTrue(Option.isNone(runtimeRow));
+    }),
+  );
+});
+
+const RowCount = Schema.Struct({ n: Schema.Number });
+const decodeRowCount = Schema.decodeUnknownSync(Schema.Array(RowCount));
+
+describe("thread import with a source copy (raw history backfill)", () => {
+  const withHistory = (args: ReadonlyArray<string>, sourceDb: string) => [
+    ...args,
+    "--source-db",
+    sourceDb,
+  ];
+
+  it.effect("replays the fixture history through the engine into the projections", () =>
+    Effect.gen(function* () {
+      const baseDir = makeScratchBaseDir("history");
+      const sourceDb = NodePath.join(makeScratchBaseDir("source"), "thread-copy.sqlite");
+      writeLhcSourceDatabase(sourceDb, makeFixtureThread());
+      const { projectId, workspaceRoot } = yield* addProject(baseDir);
+      const expectedThreadId = deriveImportedThreadId(SOURCE_THREAD_ID);
+      assert.strictEqual(SOURCE_THREAD_ID, FIXTURE_SOURCE_THREAD_ID);
+
+      const { result: output, fetchCalls } = yield* withNetworkGuard(
+        Effect.gen(function* () {
+          yield* Command.runWith(cli, { version: "0.0.0" })(
+            withHistory(importArgs(baseDir, projectId, workspaceRoot), sourceDb),
+          );
+          return (yield* TestConsole.logLines).filter(
+            (line): line is string => typeof line === "string",
+          );
+        }).pipe(Effect.provide(Layer.mergeAll(CliRuntimeLayer, TestConsole.layer))),
+      );
+      assert.deepStrictEqual(fetchCalls, []);
+      assert.include(
+        output.join("\n"),
+        "Backfilled 2 user + 2 assistant messages, 3 tool and 2 note activities across 2 turns (last turn interrupted).",
+      );
+      assert.include(
+        output.join("\n"),
+        "Unsupported block kept as text: user_prompt m11 → image · image/png · 4096 bytes",
+      );
+      assert.include(
+        output.join("\n"),
+        "Tool call without result closed as failed: Bash toolu_03 (m12)",
+      );
+      assert.include(output.at(-1) ?? "", `resume session ${RESUME_SESSION_ID}, 2 turns.`);
+
+      yield* withScratchPersistence(
+        baseDir,
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          const messages = yield* sql<{
+            readonly role: string;
+            readonly turn_id: string | null;
+            readonly text: string;
+            readonly is_streaming: number;
+            readonly created_at: string;
+          }>`SELECT role, turn_id, text, is_streaming, created_at FROM projection_thread_messages WHERE thread_id = ${expectedThreadId} ORDER BY created_at ASC`;
+          assert.deepStrictEqual(
+            messages.map((row) => [row.role, row.is_streaming, row.text.split("\n")[0]]),
+            [
+              ["user", 0, "List the repo root."],
+              ["assistant", 0, "Two files at the root."],
+              ["assistant", 0, "The file is missing; stopping here."],
+              ["user", 0, "What is in this screenshot?"],
+            ],
+          );
+          const turns = yield* sql<{
+            readonly turn_id: string | null;
+            readonly state: string;
+            readonly pending_message_id: string | null;
+            readonly assistant_message_id: string | null;
+            readonly started_at: string | null;
+            readonly completed_at: string | null;
+          }>`SELECT turn_id, state, pending_message_id, assistant_message_id, started_at, completed_at FROM projection_turns WHERE thread_id = ${expectedThreadId} ORDER BY requested_at ASC`;
+          assert.deepStrictEqual(
+            turns.map((row) => row.state),
+            ["completed", "interrupted"],
+          );
+          assert.isTrue(
+            turns.every((row) => row.turn_id !== null && row.pending_message_id !== null),
+          );
+          assert.isTrue(turns.every((row) => row.started_at !== null && row.completed_at !== null));
+          assert.strictEqual(messages[1]?.turn_id, turns[0]?.turn_id);
+          assert.strictEqual(turns[0]?.assistant_message_id !== null, true);
+
+          const activities = yield* sql<{
+            readonly kind: string;
+            readonly tone: string;
+            readonly turn_id: string | null;
+            readonly created_at: string;
+          }>`SELECT kind, tone, turn_id, created_at FROM projection_thread_activities WHERE thread_id = ${expectedThreadId} ORDER BY created_at ASC`;
+          assert.deepStrictEqual(
+            activities.map((row) => row.kind),
+            [
+              "tool.completed",
+              "context-compaction",
+              "tool.completed",
+              "runtime.note",
+              "tool.completed",
+            ],
+          );
+          assert.deepStrictEqual(
+            activities.map((row) => row.turn_id),
+            [
+              turns[0]?.turn_id,
+              turns[0]?.turn_id,
+              turns[0]?.turn_id,
+              turns[0]?.turn_id,
+              turns[1]?.turn_id,
+            ],
+          );
+          const stamps = [
+            ...messages.map((row) => row.created_at),
+            ...activities.map((row) => row.created_at),
+          ];
+          assert.strictEqual(
+            new Set(stamps).size,
+            stamps.length,
+            "every row gets its own millisecond",
+          );
+
+          const sessions = yield* sql<{
+            readonly status: string;
+            readonly active_turn_id: string | null;
+          }>`SELECT status, active_turn_id FROM projection_thread_sessions WHERE thread_id = ${expectedThreadId}`;
+          assert.deepStrictEqual(sessions, [{ status: "stopped", active_turn_id: null }]);
+
+          const eventTypes = yield* sql<{
+            readonly event_type: string;
+          }>`SELECT DISTINCT event_type FROM orchestration_events WHERE stream_id = ${expectedThreadId} ORDER BY event_type`;
+          assert.deepStrictEqual(
+            eventTypes.map((row) => row.event_type),
+            [
+              "thread.activity-appended",
+              "thread.created",
+              "thread.message-sent",
+              "thread.session-set",
+              "thread.turn-start-requested",
+            ],
+          );
+
+          const runtimeRepository = yield* ProviderSessionRuntime.ProviderSessionRuntimeRepository;
+          const runtime = yield* runtimeRepository.getByThreadId({ threadId: expectedThreadId });
+          assert.isTrue(Option.isSome(runtime));
+          if (Option.isSome(runtime)) {
+            assert.strictEqual(runtime.value.status, "stopped");
+            assert.deepStrictEqual(runtime.value.resumeCursor, {
+              threadId: expectedThreadId,
+              resume: RESUME_SESSION_ID,
+              turnCount: 2,
+            });
+          }
+        }),
+      );
+
+      // Second import of the same source: refused at thread creation, nothing appended.
+      const before = yield* withScratchPersistence(
+        baseDir,
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return decodeRowCount(yield* sql`SELECT COUNT(*) AS n FROM orchestration_events`)[0]?.n;
+        }),
+      );
+      const second = yield* runCli(
+        withHistory(importArgs(baseDir, projectId, workspaceRoot), sourceDb),
+      ).pipe(Effect.flip);
+      assert.include(String(second), "thread.create");
+      const after = yield* withScratchPersistence(
+        baseDir,
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return decodeRowCount(yield* sql`SELECT COUNT(*) AS n FROM orchestration_events`)[0]?.n;
+        }),
+      );
+      assert.strictEqual(after, before);
+    }),
+  );
+
+  it.effect("refuses a copy whose thread id does not match --source-thread-id", () =>
+    Effect.gen(function* () {
+      const baseDir = makeScratchBaseDir("mismatch");
+      const sourceDb = NodePath.join(makeScratchBaseDir("source"), "other-thread.sqlite");
+      writeLhcSourceDatabase(sourceDb, { ...makeFixtureThread(), threadId: "th_someoneelse" });
+      const { projectId, workspaceRoot } = yield* addProject(baseDir);
+      const error = yield* runCli(
+        withHistory(importArgs(baseDir, projectId, workspaceRoot), sourceDb),
+      ).pipe(Effect.flip);
+      assert.instanceOf(error, ImportThreadSourceError);
+      const threads = yield* withScratchPersistence(
+        baseDir,
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return decodeRowCount(yield* sql`SELECT COUNT(*) AS n FROM projection_threads`)[0]?.n;
+        }),
+      );
+      assert.strictEqual(threads, 0);
     }),
   );
 });

@@ -737,7 +737,7 @@ function readToolImagePath(toolName: string, input: Record<string, unknown>): st
   return path.length > 0 && isWorkspaceImagePreviewPath(path) ? path : undefined;
 }
 
-function classifyToolItemType(
+export function classifyToolItemType(
   toolName: string,
   input: Record<string, unknown> = {},
 ): CanonicalItemType {
@@ -1195,7 +1195,7 @@ function workflowAgentStatus(entry: ClaudeWorkflowAgentEntry): RuntimeTaskStatus
   }
 }
 
-function summarizeToolRequest(toolName: string, input: Record<string, unknown>): string {
+export function summarizeToolRequest(toolName: string, input: Record<string, unknown>): string {
   const imagePath = readToolImagePath(toolName, input);
   if (imagePath) {
     return imagePath;
@@ -1228,7 +1228,7 @@ function summarizeToolRequest(toolName: string, input: Record<string, unknown>):
   return `${toolName}: ${serialized.slice(0, 397)}...`;
 }
 
-function titleForTool(itemType: CanonicalItemType): string {
+export function titleForTool(itemType: CanonicalItemType): string {
   switch (itemType) {
     case "command_execution":
       return "Command run";
