@@ -29,8 +29,8 @@ import { withInstanceIdentity } from "./instanceIdentity.ts";
 import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
 import { discoverGrokSkills } from "./GrokSkills.ts";
 import {
-  makeManualOnlyProviderMaintenanceCapabilities,
-  makeStaticProviderMaintenanceResolver,
+  makeProviderMaintenanceCapabilities,
+  type ProviderMaintenanceCapabilitiesResolver,
   resolveProviderMaintenanceCapabilitiesEffect,
 } from "../providerMaintenance.ts";
 import {
@@ -41,12 +41,21 @@ import {
 const decodeGrokSettings = Schema.decodeSync(GrokSettings);
 
 const DRIVER_KIND = ProviderDriverKind.make("grok");
-const UPDATE = makeStaticProviderMaintenanceResolver(
-  makeManualOnlyProviderMaintenanceCapabilities({
-    provider: DRIVER_KIND,
-    packageName: null,
-  }),
-);
+// Grok Build updates itself (`grok update`), stock and LHC builds alike, like
+// cursor-agent: no package to compare against, so the version badge stays
+// unknown while Update runs the configured binary's own updater. The binary
+// owns release selection and install location; one lock serializes every Grok
+// instance, each updating the binary its own `binaryPath` names.
+export const grokMaintenanceResolver: ProviderMaintenanceCapabilitiesResolver = {
+  resolve: (options) =>
+    makeProviderMaintenanceCapabilities({
+      provider: DRIVER_KIND,
+      packageName: null,
+      updateExecutable: options?.binaryPath?.trim() || "grok",
+      updateArgs: ["update"],
+      updateLockKey: "grok",
+    }),
+};
 
 export type GrokDriverEnv =
   | BackgroundPolicy.BackgroundPolicy
@@ -88,10 +97,10 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
         continuationGroupKey: continuationIdentity.continuationKey,
       });
       const effectiveConfig = { ...config, enabled } satisfies GrokSettings;
-      const maintenanceCapabilities = yield* resolveProviderMaintenanceCapabilitiesEffect(UPDATE, {
-        binaryPath: effectiveConfig.binaryPath,
-        env: processEnv,
-      });
+      const maintenanceCapabilities = yield* resolveProviderMaintenanceCapabilitiesEffect(
+        grokMaintenanceResolver,
+        { binaryPath: effectiveConfig.binaryPath, env: processEnv },
+      );
 
       const adapter = yield* makeGrokAdapter(effectiveConfig, {
         environment: processEnv,

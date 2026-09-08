@@ -112,6 +112,11 @@ Grok models that support adjustable reasoning show a **Reasoning** control besid
 The available levels and default come from the installed Grok Build CLI, so they can vary by model
 and CLI version.
 
+Grok Build updates itself. **Update** on a Grok provider runs that provider's binary with
+`update`, so each Grok provider updates the CLI its **Binary path** points at. T3 Code does not
+look up a latest Grok release, so the provider row shows the installed version with no "behind"
+badge, and Update stays available.
+
 Run CLI login commands on the machine running the T3 Code server, not on the device you browse
 from. Antigravity uses its sign-in controls in T3 Code instead of a CLI login command.
 
