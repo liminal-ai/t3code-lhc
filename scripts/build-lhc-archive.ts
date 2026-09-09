@@ -158,7 +158,11 @@ function materializeLhcPin(pin: SidecarPin, dest: string): string {
 function buildLhcDist(source: string, lhcPkg: NpmPackageJson, destDist: string): void {
   const work = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3code-lhc-sdk-build-"));
   try {
-    copyTree(NodePath.join(source, "packages/lhc"), work, new Set(["node_modules", "dist", "test"]));
+    copyTree(
+      NodePath.join(source, "packages/lhc"),
+      work,
+      new Set(["node_modules", "dist", "test"]),
+    );
     writePackageJson(NodePath.join(work, "package.json"), lhcPkg);
     console.log("[lhc-archive] installing LHC package build dependencies...");
     run("npm", ["install", "--no-fund", "--no-audit"], work);

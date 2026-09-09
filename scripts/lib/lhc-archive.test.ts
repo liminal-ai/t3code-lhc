@@ -113,9 +113,8 @@ describe("lhc-archive", () => {
   });
 
   it("rewrites only workspace: specs onto file: bindings", async () => {
-    const { rewriteWorkspaceDependencies, packageJsonWithWorkspaceRewrites } = await import(
-      "./lhc-sidecar-stage.ts"
-    );
+    const { rewriteWorkspaceDependencies, packageJsonWithWorkspaceRewrites } =
+      await import("./lhc-sidecar-stage.ts");
     expect(
       rewriteWorkspaceDependencies(
         {
@@ -130,9 +129,9 @@ describe("lhc-archive", () => {
       zod: "4.4.3",
       "@anthropic-ai/claude-agent-sdk": "0.3.170",
     });
-    expect(() => rewriteWorkspaceDependencies({ other: "workspace:*" }, { lhc: "file:./lhc" })).toThrow(
-      /other/,
-    );
+    expect(() =>
+      rewriteWorkspaceDependencies({ other: "workspace:*" }, { lhc: "file:./lhc" }),
+    ).toThrow(/other/);
     expect(
       packageJsonWithWorkspaceRewrites(
         {
