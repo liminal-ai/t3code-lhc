@@ -185,9 +185,11 @@ jobs:
       - name: Checkout scripts
         uses: actions/checkout@v6
         with:
+          # package.json is what setup-node reads for the Node version.
           sparse-checkout: |
             /scripts/
             /lhc-release/
+            /package.json
           sparse-checkout-cone-mode: false
 
       - name: Setup Node
