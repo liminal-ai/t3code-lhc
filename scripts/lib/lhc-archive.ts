@@ -3,12 +3,22 @@
 // rules are unit-testable; the runner does the copying and spawning.
 
 import { selectCliRuntimeExternalDependencies } from "./cli-external-packages.ts";
+import {
+  LHC_SIDECAR_ARCHIVE_ROOT,
+  SIDECAR_OPTIONAL_SDK_EXCLUDE_PREFIX,
+  type SidecarProvenance,
+} from "./lhc-sidecar-stage.ts";
 import { resolveCatalogDependencies } from "./resolve-catalog.ts";
 
 export type ArchivePlatform = "linux";
 export type ArchiveArch = "x64" | "arm64";
 
-export const ARCHIVE_ROOTS = ["manifest.json", "apps/server/dist", "node_modules"] as const;
+export const ARCHIVE_ROOTS = [
+  "manifest.json",
+  "apps/server/dist",
+  "node_modules",
+  LHC_SIDECAR_ARCHIVE_ROOT,
+] as const;
 
 export interface ArchiveIdentity {
   readonly version: string;
@@ -51,6 +61,7 @@ export interface ArchiveManifest {
   readonly arch: ArchiveArch;
   readonly node: string;
   readonly roots: ReadonlyArray<string>;
+  readonly sidecar: SidecarProvenance;
 }
 
 export function buildManifest(input: {
@@ -59,6 +70,7 @@ export function buildManifest(input: {
   readonly platform: ArchivePlatform;
   readonly arch: ArchiveArch;
   readonly nodeEngine: string;
+  readonly sidecar: SidecarProvenance;
 }): ArchiveManifest {
   return {
     name: archiveFileName({
@@ -73,6 +85,11 @@ export function buildManifest(input: {
     arch: input.arch,
     node: input.nodeEngine,
     roots: [...ARCHIVE_ROOTS],
+    sidecar: {
+      repository: input.sidecar.repository,
+      commit: input.sidecar.commit,
+      claudeAgentSdk: input.sidecar.claudeAgentSdk,
+    },
   };
 }
 
@@ -122,6 +139,7 @@ export function archiveExcludedPrefixes(shared: ReadonlyArray<string>): Readonly
     "node_modules/node-pty/build/config.gypi",
     "node_modules/node-pty/build/deps",
     "node_modules/node-pty/build/node_gyp_bins",
+    SIDECAR_OPTIONAL_SDK_EXCLUDE_PREFIX,
   ];
 }
 

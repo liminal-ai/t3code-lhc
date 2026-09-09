@@ -28,24 +28,32 @@ describe("lhc-archive", () => {
     );
   });
 
-  it("builds a manifest carrying identity, commit, target and roots", () => {
+  it("builds a manifest carrying identity, commit, target, roots and sidecar pin", () => {
+    const sidecar = {
+      repository: "https://github.com/liminal-ai/long-horizon-context.git",
+      commit: "8e4c3e4039e05d5b6d511b21839201140f9c49df",
+      claudeAgentSdk: "0.3.170",
+    };
     const manifest = buildManifest({
-      identity: { version: "0.0.40", upstreamTag: "v0.0.40" },
+      identity: { version: "0.0.40-lhc.2", upstreamTag: "v0.0.40" },
       commit: "bd6f0161f",
       platform: "linux",
       arch: "x64",
       nodeEngine: "^24.13.1",
+      sidecar,
     });
     expect(manifest).toEqual({
-      name: "t3code-lhc-0.0.40-linux-x64.tar.gz",
-      version: "0.0.40",
+      name: "t3code-lhc-0.0.40-lhc.2-linux-x64.tar.gz",
+      version: "0.0.40-lhc.2",
       upstreamTag: "v0.0.40",
       commit: "bd6f0161f",
       platform: "linux",
       arch: "x64",
       node: "^24.13.1",
-      roots: ["manifest.json", "apps/server/dist", "node_modules"],
+      roots: ["manifest.json", "apps/server/dist", "node_modules", "vendor/claude-lhc"],
+      sidecar,
     });
+    expect("createdAt" in manifest).toBe(false);
   });
 
   it("stages only runtime externals plus the linux fff natives, catalog resolved", () => {
@@ -104,6 +112,43 @@ describe("lhc-archive", () => {
     ).toThrow(/non-negative integer/);
   });
 
+  it("rewrites only workspace: specs onto file: bindings", async () => {
+    const { rewriteWorkspaceDependencies, packageJsonWithWorkspaceRewrites } = await import(
+      "./lhc-sidecar-stage.ts"
+    );
+    expect(
+      rewriteWorkspaceDependencies(
+        {
+          lhc: "workspace:*",
+          zod: "4.4.3",
+          "@anthropic-ai/claude-agent-sdk": "0.3.170",
+        },
+        { lhc: "file:./lhc" },
+      ),
+    ).toEqual({
+      lhc: "file:./lhc",
+      zod: "4.4.3",
+      "@anthropic-ai/claude-agent-sdk": "0.3.170",
+    });
+    expect(() => rewriteWorkspaceDependencies({ other: "workspace:*" }, { lhc: "file:./lhc" })).toThrow(
+      /other/,
+    );
+    expect(
+      packageJsonWithWorkspaceRewrites(
+        {
+          name: "claude-lhc",
+          version: "0.1.0",
+          dependencies: { lhc: "workspace:*", zod: "4.4.3" },
+        },
+        { lhc: "file:./lhc" },
+      ),
+    ).toEqual({
+      name: "claude-lhc",
+      version: "0.1.0",
+      dependencies: { lhc: "file:./lhc", zod: "4.4.3" },
+    });
+  });
+
   it("writes sha256sum-compatible lines", () => {
     expect(sha256Line("ab".repeat(32), "x.tar.gz")).toBe(`${"ab".repeat(32)}  x.tar.gz\n`);
   });
@@ -122,6 +167,7 @@ describe("archiveExcludedPrefixes", () => {
     expect(result).toContain("node_modules/.pnpm");
     expect(result).toContain("node_modules/node-pty/prebuilds/win32-");
     expect(result).toContain("node_modules/node-pty/build/Release/obj");
+    expect(result).toContain("vendor/claude-lhc/node_modules/@anthropic-ai/claude-agent-sdk-");
     expect(
       result.every((prefix) => !"node_modules/node-pty/build/Release/pty.node".startsWith(prefix)),
     ).toBe(true);

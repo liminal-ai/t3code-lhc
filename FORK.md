@@ -67,7 +67,10 @@ and trust.
   `--arch`, `--out`). Produces `dist-lhc/t3code-lhc-<version>-linux-<arch>.tar.gz`
   plus `.sha256`; inside: `manifest.json`, `apps/server/dist` (web client at
   `dist/client`, no source maps), `node_modules` (runtime externals staged like the
-  desktop sidecar's Linux half, pty.node compiled on the build host, glibc >= 2.34).
+  desktop sidecar's Linux half, pty.node compiled on the build host, glibc >= 2.34),
+  and `vendor/claude-lhc` (launcher, src, built `lhc` dist, JS closure from
+  `lhc-release/sidecar.json`). Optional `@anthropic-ai/claude-agent-sdk-*`
+  platform packages are not shipped: T3 passes `pathToClaudeCodeExecutable`.
   The script refuses to emit an archive whose extracted tree does not answer
   `--lhc-version` with the manifest identity.
   Builds are reproducible: two builds of one commit give one sha256 (no build time
@@ -80,7 +83,9 @@ and trust.
   `liminal-ai/t3code-lhc` releases/latest and installs only if the asset version
   differs from the receipt: equality, never ordering. Old versions stay; rollback
   is `--use <version>`. It never touches systemd. Tests: `scripts/install-lhc.test.sh`.
-- Launcher: `<prefix>/bin/t3code-lhc` execs `node current/apps/server/dist/bin.mjs`.
+- Launcher: `<prefix>/bin/t3code-lhc` sets `CLAUDE_LHC_SIDECAR` to
+  `current/vendor/claude-lhc/bin/claude-lhc` unless it is already set, then execs
+  `node current/apps/server/dist/bin.mjs`. The server bridge stays env-or-PATH.
   Activation on this box (not done yet): change the last line of
   `~/.t3code/run-server.sh` from `node /srv/work/t3code/apps/server/dist/bin.mjs ...`
   to `"$HOME/.local/share/t3code-lhc/bin/t3code-lhc" ...` with the same arguments and
@@ -132,5 +137,9 @@ fork is installed from `liminal-ai/t3code-lhc` releases only.
 
 ## Prerequisites (declared, not bundled)
 
-Node 24, the `claude-lhc` sidecar from the LHC repo (Bun runtime), and provider
-CLIs for Codex/Grok when those providers are enabled.
+Node 24, Bun >= 1.4 (the bundled `claude-lhc` launcher runs `bun run src/sidecar.ts`),
+an authenticated Claude Code CLI, and provider CLIs for Codex/Grok when those
+providers are enabled. The sidecar itself is in the archive; a source checkout of
+long-horizon-context is not required. `CLAUDE_LHC_SIDECAR` still overrides the
+bundled path. The archive builder clones `lhc-release/sidecar.json`'s commit;
+it does not copy a developer working tree.

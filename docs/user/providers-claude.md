@@ -4,6 +4,11 @@ T3 Code uses Claude Code's login and configuration. Start with the default provi
 for one account; [provider setup](./install.md#providers) covers installation and
 shared provider settings.
 
+A Claude instance can enable **Long-horizon context (LHC)**. That routes the
+thread through the bundled `claude-lhc` sidecar (Bun, plus an authenticated
+`claude` on PATH). Leave LHC off for stock Claude Code. `CLAUDE_LHC_SIDECAR`
+overrides the bundled launcher if you need to.
+
 ## Separate accounts or configurations
 
 Use a separate Claude config directory for each account. This also works for named

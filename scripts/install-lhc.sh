@@ -9,15 +9,17 @@
 #          --arch x64|arm64 (default: host), --force (replace an installed version dir).
 #
 # Store layout under PREFIX:
-#   versions/<version>/   extracted archive (manifest.json, apps/server/dist, node_modules)
+#   versions/<version>/   extracted archive (manifest.json, apps/server/dist, node_modules,
+#                         vendor/claude-lhc)
 #   current -> versions/<version>   swapped atomically, only after the extracted tree
 #                                   answers `--lhc-version` with the manifest's identity
-#   bin/t3code-lhc        launcher: exec node current/apps/server/dist/bin.mjs "$@"
+#   bin/t3code-lhc        launcher: sets CLAUDE_LHC_SIDECAR to current/vendor/claude-lhc
+#                         unless already set, then exec node current/apps/server/dist/bin.mjs
 #   receipt.json          { version, upstreamTag, prefix, name, source, sha256, installedAt, previous }
 #
-# Versions are compared for equality only, never ordered (FORK.md). Node >= 24 and
-# the claude-lhc sidecar are prerequisites, not bundled. Old versions are never
-# deleted. systemd is never touched.
+# Versions are compared for equality only, never ordered (FORK.md). Node >= 24, Bun
+# (>= 1.4, for the bundled claude-lhc launcher), and an authenticated Claude Code CLI
+# are runtime prerequisites. Old versions are never deleted. systemd is never touched.
 set -euo pipefail
 
 PREFIX="${HOME}/.local/share/t3code-lhc"
@@ -46,8 +48,9 @@ done
 command -v node >/dev/null 2>&1 || die "node is required (>= 24) and was not found on PATH"
 NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
 [ "$NODE_MAJOR" -ge 24 ] || die "node >= 24 is required, found $(node --version)"
-command -v claude-lhc >/dev/null 2>&1 || [ -n "${CLAUDE_LHC_SIDECAR:-}" ] || \
-  echo "install-lhc: warning: claude-lhc sidecar not on PATH and CLAUDE_LHC_SIDECAR unset; LHC threads need it at run time" >&2
+if ! command -v bun >/dev/null 2>&1 && [ ! -x "${HOME}/.bun/bin/bun" ] && [ -z "${CLAUDE_LHC_BUN:-}" ]; then
+  echo "install-lhc: warning: bun not found (PATH, ~/.bun/bin/bun, or CLAUDE_LHC_BUN); LHC threads need it to run the bundled sidecar" >&2
+fi
 
 if [ -z "$ARCH" ]; then
   case "$(uname -m)" in
@@ -78,9 +81,15 @@ write_launcher() {
   cat > "$LAUNCHER.tmp" <<'EOF'
 #!/usr/bin/env bash
 # t3code-lhc launcher: runs the server from the store's `current` version.
+# Bundled claude-lhc is discovered here, not by the server bridge.
 set -euo pipefail
 here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
-exec node "$here/../current/apps/server/dist/bin.mjs" "$@"
+root="$(cd "$here/.." && pwd)"
+bundled="$root/current/vendor/claude-lhc/bin/claude-lhc"
+if [ -z "${CLAUDE_LHC_SIDECAR:-}" ] && [ -x "$bundled" ]; then
+  export CLAUDE_LHC_SIDECAR="$bundled"
+fi
+exec node "$root/current/apps/server/dist/bin.mjs" "$@"
 EOF
   chmod +x "$LAUNCHER.tmp"
   mv -f "$LAUNCHER.tmp" "$LAUNCHER"

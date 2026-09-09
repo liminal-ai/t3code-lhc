@@ -16,11 +16,13 @@ check() { if eval "$2"; then ok "$1"; else fail "$1"; fi; }
 # make_fake_archive <version> <upstreamTag> [printedVersion]
 make_fake_archive() {
   local v="$1" tag="$2" printed="${3:-$1}" name="t3code-lhc-$1-linux-x64.tar.gz" s="$T/stage-$1"
-  mkdir -p "$s/apps/server/dist/client" "$s/node_modules"
-  printf '{"name":"%s","version":"%s","upstreamTag":"%s","platform":"linux","arch":"x64"}\n' "$name" "$v" "$tag" > "$s/manifest.json"
-  printf 'if (process.argv[2] === "--lhc-version") { console.log("t3code-lhc %s (upstream %s)"); process.exit(0); }\nconsole.log("stub server", process.argv.slice(2).join(" "));\n' "$printed" "$tag" > "$s/apps/server/dist/bin.mjs"
+  mkdir -p "$s/apps/server/dist/client" "$s/node_modules" "$s/vendor/claude-lhc/bin"
+  printf '{"name":"%s","version":"%s","upstreamTag":"%s","platform":"linux","arch":"x64","sidecar":{"repository":"https://github.com/liminal-ai/long-horizon-context.git","commit":"8e4c3e4039e05d5b6d511b21839201140f9c49df","claudeAgentSdk":"0.3.170"}}\n' "$name" "$v" "$tag" > "$s/manifest.json"
+  printf 'if (process.argv[2] === "--lhc-version") { console.log("t3code-lhc %s (upstream %s)"); process.exit(0); }\nconsole.log("stub server", process.argv.slice(2).join(" "));\nif (process.env.CLAUDE_LHC_SIDECAR) console.error("sidecar=" + process.env.CLAUDE_LHC_SIDECAR);\n' "$printed" "$tag" > "$s/apps/server/dist/bin.mjs"
   echo "<html></html>" > "$s/apps/server/dist/client/index.html"
-  (cd "$s" && tar -czf "$ASSETS/$name" manifest.json apps node_modules)
+  printf '#!/bin/sh\necho bundled-sidecar\n' > "$s/vendor/claude-lhc/bin/claude-lhc"
+  chmod +x "$s/vendor/claude-lhc/bin/claude-lhc"
+  (cd "$s" && tar -czf "$ASSETS/$name" manifest.json apps node_modules vendor)
   (cd "$ASSETS" && sha256sum "$name" > "$name.sha256")
   echo "$ASSETS/$name"
 }
@@ -33,6 +35,11 @@ echo "1. fresh install from --archive"
 "$INSTALL" --prefix "$PREFIX" --archive "$A" >/dev/null
 check "current -> versions/0.0.40" '[ "$(readlink "$PREFIX/current")" = versions/0.0.40 ]'
 check "launcher prints identity" '[ "$("$PREFIX/bin/t3code-lhc" --lhc-version)" = "t3code-lhc 0.0.40 (upstream v0.0.40)" ]'
+bundled="$PREFIX/current/vendor/claude-lhc/bin/claude-lhc"
+launcher_sidecar="$(env -u CLAUDE_LHC_SIDECAR "$PREFIX/bin/t3code-lhc" serve 2>&1 >/dev/null || true)"
+check "launcher sets CLAUDE_LHC_SIDECAR from current/" '[[ "$launcher_sidecar" == *"sidecar=$bundled"* ]]'
+override_sidecar="$(CLAUDE_LHC_SIDECAR=/tmp/override-sidecar "$PREFIX/bin/t3code-lhc" serve 2>&1 >/dev/null || true)"
+check "explicit CLAUDE_LHC_SIDECAR override wins" '[[ "$override_sidecar" == *"sidecar=/tmp/override-sidecar"* ]]'
 check "receipt fields" 'node -e "const r=require(process.argv[1]);process.exit(r.version===\"0.0.40\"&&r.upstreamTag===\"v0.0.40\"&&r.prefix===process.argv[2]&&r.name===\"t3code-lhc-0.0.40-linux-x64.tar.gz\"&&r.source.endsWith(\"/assets/t3code-lhc-0.0.40-linux-x64.tar.gz\")&&/^[0-9a-f]{64}$/.test(r.sha256)&&r.previous===null&&!!Date.parse(r.installedAt)?0:1)" "$PREFIX/receipt.json" "$PREFIX"'
 check "no partial dir left" '[ -z "$(ls -d "$PREFIX"/versions/*.partial 2>/dev/null)" ]'
 

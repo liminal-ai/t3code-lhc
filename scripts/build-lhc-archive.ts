@@ -25,6 +25,7 @@ import { fromYaml } from "@t3tools/shared/schemaYaml";
 
 import rootPackageJson from "../package.json" with { type: "json" };
 import serverPackageJson from "../apps/server/package.json" with { type: "json" };
+import sidecarPin from "../lhc-release/sidecar.json" with { type: "json" };
 import lhcVersion from "../lhc-release/version.json" with { type: "json" };
 import {
   createStagePatchedDependencies,
@@ -43,6 +44,18 @@ import {
   stageDependencies,
   tarArguments,
 } from "./lib/lhc-archive.ts";
+import {
+  assertSidecarPin,
+  claudeAgentSdkVersionFromPackage,
+  isBundledClaudeExecutablePackage,
+  LHC_SIDECAR_ARCHIVE_ROOT,
+  LHC_SIDECAR_LAUNCHER,
+  packageJsonWithWorkspaceRewrites,
+  SIDECAR_NPMRC,
+  type NpmPackageJson,
+  type SidecarPin,
+  type SidecarProvenance,
+} from "./lib/lhc-sidecar-stage.ts";
 import { resolveCatalogDependencies } from "./lib/resolve-catalog.ts";
 
 const repoRoot = NodePath.resolve(import.meta.dirname, "..");
@@ -98,6 +111,107 @@ function run(
     );
   }
   return result.stdout;
+}
+
+function copyTree(source: string, destination: string, skip: ReadonlySet<string>): void {
+  NodeFS.mkdirSync(destination, { recursive: true });
+  for (const entry of NodeFS.readdirSync(source, { withFileTypes: true })) {
+    if (skip.has(entry.name)) continue;
+    const from = NodePath.join(source, entry.name);
+    const to = NodePath.join(destination, entry.name);
+    if (entry.isDirectory()) copyTree(from, to, skip);
+    else if (entry.isSymbolicLink()) {
+      NodeFS.symlinkSync(NodeFS.readlinkSync(from), to);
+    } else NodeFS.copyFileSync(from, to);
+  }
+}
+
+function readPackageJson(path: string): NpmPackageJson {
+  return JSON.parse(NodeFS.readFileSync(path, "utf8")) as NpmPackageJson;
+}
+
+function writePackageJson(path: string, pkg: NpmPackageJson): void {
+  NodeFS.writeFileSync(path, `${JSON.stringify(pkg, null, 2)}\n`);
+}
+
+function removeBundledClaudeExecutables(nodeModulesDir: string): void {
+  const anthropic = NodePath.join(nodeModulesDir, "@anthropic-ai");
+  if (!NodeFS.existsSync(anthropic)) return;
+  for (const entry of NodeFS.readdirSync(anthropic, { withFileTypes: true })) {
+    if (!isBundledClaudeExecutablePackage(entry.name)) continue;
+    NodeFS.rmSync(NodePath.join(anthropic, entry.name), { recursive: true, force: true });
+  }
+}
+
+/** Materialize the recorded LHC pin as that commit's tree, never a working copy. */
+function materializeLhcPin(pin: SidecarPin, dest: string): string {
+  NodeFS.mkdirSync(dest, { recursive: true });
+  run("git", ["init", "--quiet"], dest);
+  run("git", ["remote", "add", "origin", pin.repository], dest);
+  run("git", ["fetch", "--quiet", "--depth=1", "origin", pin.commit], dest);
+  run("git", ["checkout", "--quiet", "FETCH_HEAD"], dest);
+  const commit = run("git", ["rev-parse", "HEAD"], dest).trim();
+  assertSidecarPin(commit, pin);
+  return dest;
+}
+
+function buildLhcDist(source: string, lhcPkg: NpmPackageJson, destDist: string): void {
+  const work = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3code-lhc-sdk-build-"));
+  try {
+    copyTree(NodePath.join(source, "packages/lhc"), work, new Set(["node_modules", "dist", "test"]));
+    writePackageJson(NodePath.join(work, "package.json"), lhcPkg);
+    console.log("[lhc-archive] installing LHC package build dependencies...");
+    run("npm", ["install", "--no-fund", "--no-audit"], work);
+    const tsc = NodePath.join(work, "node_modules", "typescript", "bin", "tsc");
+    if (!NodeFS.existsSync(tsc)) {
+      throw new Error("LHC package install did not provide typescript/bin/tsc");
+    }
+    run(tsc, ["-p", "tsconfig.json"], work);
+    const built = NodePath.join(work, "dist");
+    if (!NodeFS.existsSync(NodePath.join(built, "index.js"))) {
+      throw new Error("LHC tsc produced no dist/index.js");
+    }
+    NodeFS.mkdirSync(destDist, { recursive: true });
+    copyTree(built, destDist, new Set());
+  } finally {
+    NodeFS.rmSync(work, { recursive: true, force: true });
+  }
+}
+
+function stageClaudeLhc(stage: string, pin: SidecarPin): SidecarProvenance {
+  const sidecarRoot = NodePath.join(stage, LHC_SIDECAR_ARCHIVE_ROOT);
+  const scratch = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3code-lhc-sidecar-src-"));
+  try {
+    const source = materializeLhcPin(pin, NodePath.join(scratch, "repo"));
+    const lhcPkg = readPackageJson(NodePath.join(source, "packages/lhc/package.json"));
+    const claudePkg = readPackageJson(NodePath.join(source, "packages/claude-lhc/package.json"));
+    const claudeAgentSdk = claudeAgentSdkVersionFromPackage(claudePkg);
+
+    const lhcOut = NodePath.join(sidecarRoot, "lhc");
+    buildLhcDist(source, lhcPkg, NodePath.join(lhcOut, "dist"));
+    writePackageJson(NodePath.join(lhcOut, "package.json"), lhcPkg);
+
+    copyTree(
+      NodePath.join(source, "packages/claude-lhc"),
+      sidecarRoot,
+      new Set(["node_modules", "test", "scripts", "package.json"]),
+    );
+    writePackageJson(
+      NodePath.join(sidecarRoot, "package.json"),
+      packageJsonWithWorkspaceRewrites(claudePkg, { lhc: "file:./lhc" }),
+    );
+    NodeFS.writeFileSync(NodePath.join(sidecarRoot, ".npmrc"), SIDECAR_NPMRC);
+    const launcher = NodePath.join(sidecarRoot, "bin", "claude-lhc");
+    if (!NodeFS.existsSync(launcher)) throw new Error("claude-lhc launcher missing from LHC pin");
+    NodeFS.chmodSync(launcher, 0o755);
+
+    console.log("[lhc-archive] installing claude-lhc JS dependency closure...");
+    run("npm", ["install", "--omit=dev", "--no-fund", "--no-audit"], sidecarRoot);
+    removeBundledClaudeExecutables(NodePath.join(sidecarRoot, "node_modules"));
+    return { repository: pin.repository, commit: pin.commit, claudeAgentSdk };
+  } finally {
+    NodeFS.rmSync(scratch, { recursive: true, force: true });
+  }
 }
 
 function main() {
@@ -174,6 +288,10 @@ function main() {
     console.log("[lhc-archive] installing runtime dependency closure...");
     run(vp, [...STAGE_INSTALL_ARGS], stage);
 
+    const pin: SidecarPin = sidecarPin;
+    console.log(`[lhc-archive] staging ${LHC_SIDECAR_ARCHIVE_ROOT} from ${pin.commit}`);
+    const sidecar = stageClaudeLhc(stage, pin);
+
     const commit = run("git", ["rev-parse", "HEAD"], repoRoot).trim();
     const commitTime = Number(run("git", ["log", "-1", "--format=%ct", "HEAD"], repoRoot).trim());
     const manifest = buildManifest({
@@ -182,6 +300,7 @@ function main() {
       platform: "linux",
       arch,
       nodeEngine: rootPackageJson.engines.node,
+      sidecar,
     });
     NodeFS.writeFileSync(
       NodePath.join(stage, "manifest.json"),
@@ -220,6 +339,30 @@ function main() {
         throw new Error(`post-pack identity check failed: got "${printed}", want "${expected}"`);
       if (!NodeFS.existsSync(NodePath.join(probe, "apps/server/dist/client/index.html"))) {
         throw new Error("post-pack check failed: web client missing from the archive");
+      }
+      const sidecarLauncher = NodePath.join(probe, LHC_SIDECAR_LAUNCHER);
+      if (!NodeFS.existsSync(sidecarLauncher)) {
+        throw new Error(`post-pack check failed: ${LHC_SIDECAR_LAUNCHER} missing`);
+      }
+      const packedSdk = sidecar.claudeAgentSdk;
+      const sidecarPkg = readPackageJson(
+        NodePath.join(probe, LHC_SIDECAR_ARCHIVE_ROOT, "package.json"),
+      );
+      if (sidecarPkg.dependencies?.["@anthropic-ai/claude-agent-sdk"] !== packedSdk) {
+        throw new Error("post-pack check failed: sidecar Agent SDK pin mismatch");
+      }
+      if (sidecarPkg.dependencies?.lhc !== "file:./lhc") {
+        throw new Error("post-pack check failed: sidecar lhc is not file:./lhc");
+      }
+      const optionalNative = NodePath.join(
+        probe,
+        LHC_SIDECAR_ARCHIVE_ROOT,
+        "node_modules",
+        "@anthropic-ai",
+        "claude-agent-sdk-linux-x64",
+      );
+      if (NodeFS.existsSync(optionalNative)) {
+        throw new Error("post-pack check failed: optional SDK Claude binary was packed");
       }
     } finally {
       NodeFS.rmSync(probe, { recursive: true, force: true });
