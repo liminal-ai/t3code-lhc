@@ -85,7 +85,7 @@ jobs:
     name: Clean host
     needs: candidate
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Checkout scripts
         uses: actions/checkout@v6
@@ -160,7 +160,7 @@ jobs:
           {
             echo "t3code-lhc ${VERSION} (upstream ${upstream}, BASE ${base}), commit ${{ github.sha }}."
             echo
-            echo "Install or update: \`scripts/install-lhc.sh\` (see FORK.md). Linux x64, Node 24 and the claude-lhc sidecar are prerequisites."
+            echo "Install or update: \`scripts/install-lhc.sh\` (see FORK.md). Linux x64; Node 24, Bun >= 1.4, and an authenticated Claude Code CLI are prerequisites. The claude-lhc sidecar is in the archive."
             echo "Qualified by run ${{ github.run_id }}: build, scripts tests, clean-host proof; local smoke recorded in the campaign evidence."
           } > notes.md
           gh release create "lhc-v${VERSION}" \

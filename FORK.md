@@ -112,7 +112,8 @@ so the UI's update path is inert.
 
 - Candidate: dispatch with `promote` unchecked. The run builds the archive on a
   hosted runner, runs the two scripts tests, proves the archive on a clean host
-  (`scripts/lhc-clean-host-proof.sh`, same file locally), and uploads
+  (`scripts/lhc-clean-host-proof.sh`: identity, UI, packaged sidecar stdin-EOF
+  under Bun; same file locally), and uploads
   `<name>.tar.gz`, `.sha256`, `.manifest.json` as one artifact (14 days).
 - Qualification: those jobs green, plus the local gate on the same artifact:
   install into a scratch prefix and port with the live sidecar, the campaign's
