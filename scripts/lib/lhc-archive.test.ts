@@ -35,7 +35,6 @@ describe("lhc-archive", () => {
       platform: "linux",
       arch: "x64",
       nodeEngine: "^24.13.1",
-      createdAt: new Date("2026-09-09T02:00:00Z"),
     });
     expect(manifest).toEqual({
       name: "t3code-lhc-0.0.40-linux-x64.tar.gz",
@@ -45,7 +44,6 @@ describe("lhc-archive", () => {
       platform: "linux",
       arch: "x64",
       node: "^24.13.1",
-      createdAt: "2026-09-09T02:00:00.000Z",
       roots: ["manifest.json", "apps/server/dist", "node_modules"],
     });
   });
@@ -81,23 +79,29 @@ describe("lhc-archive", () => {
     ).toThrow(/fff-node/);
   });
 
-  it("emits deterministic tar arguments with maps and the shared prefixes excluded", () => {
+  it("emits reproducible tar arguments: pinned mtime, gzip -n, maps and shared prefixes excluded", () => {
     const args = tarArguments({
       archivePath: "/out/a.tar.gz",
       excludedPrefixes: ["node_modules/.pnpm", "node_modules/node-pty/prebuilds/darwin-"],
+      mtimeEpochSeconds: 1788400000,
     });
     expect(args).toEqual([
       "--sort=name",
       "--owner=0",
       "--group=0",
       "--numeric-owner",
+      "--mtime=@1788400000",
+      "--use-compress-program=gzip -n",
       "--exclude=*.map",
       "--exclude=node_modules/.pnpm*",
       "--exclude=node_modules/node-pty/prebuilds/darwin-*",
-      "-czf",
+      "-cf",
       "/out/a.tar.gz",
       ...ARCHIVE_ROOTS,
     ]);
+    expect(() =>
+      tarArguments({ archivePath: "/out/a.tar.gz", excludedPrefixes: [], mtimeEpochSeconds: 1.5 }),
+    ).toThrow(/non-negative integer/);
   });
 
   it("writes sha256sum-compatible lines", () => {

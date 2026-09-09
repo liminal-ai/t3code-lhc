@@ -10,6 +10,8 @@
 // The post-pack check extracts the archive to a temp dir and requires
 // `node apps/server/dist/bin.mjs --lhc-version` to print the identity line, so
 // an archive that lost the JSON import in packing never leaves this script.
+// Two builds of one commit are byte-identical: no build time in the manifest,
+// tar mtimes pinned to the commit time, gzip -n (see lib/lhc-archive.ts).
 
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
@@ -173,13 +175,13 @@ function main() {
     run(vp, [...STAGE_INSTALL_ARGS], stage);
 
     const commit = run("git", ["rev-parse", "HEAD"], repoRoot).trim();
+    const commitTime = Number(run("git", ["log", "-1", "--format=%ct", "HEAD"], repoRoot).trim());
     const manifest = buildManifest({
       identity,
       commit,
       platform: "linux",
       arch,
       nodeEngine: rootPackageJson.engines.node,
-      createdAt: new Date(),
     });
     NodeFS.writeFileSync(
       NodePath.join(stage, "manifest.json"),
@@ -197,6 +199,7 @@ function main() {
       tarArguments({
         archivePath,
         excludedPrefixes: archiveExcludedPrefixes(WSL_RUNTIME_ARCHIVE_EXCLUDED_PREFIXES),
+        mtimeEpochSeconds: commitTime,
       }),
       stage,
     );

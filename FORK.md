@@ -70,6 +70,8 @@ and trust.
   desktop sidecar's Linux half, pty.node compiled on the build host, glibc >= 2.34).
   The script refuses to emit an archive whose extracted tree does not answer
   `--lhc-version` with the manifest identity.
+  Builds are reproducible: two builds of one commit give one sha256 (no build time
+  in the manifest, tar mtimes pinned to the commit time, `gzip -n`).
 - Install or update: `scripts/install-lhc.sh [--archive FILE | --use VERSION]`.
   Store at `~/.local/share/t3code-lhc`: `versions/<version>/`, `current` symlink
   (swapped only after the extracted tree answers `--lhc-version`), `bin/t3code-lhc`

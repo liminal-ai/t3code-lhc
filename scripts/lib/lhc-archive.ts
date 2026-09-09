@@ -50,7 +50,6 @@ export interface ArchiveManifest {
   readonly platform: ArchivePlatform;
   readonly arch: ArchiveArch;
   readonly node: string;
-  readonly createdAt: string;
   readonly roots: ReadonlyArray<string>;
 }
 
@@ -60,7 +59,6 @@ export function buildManifest(input: {
   readonly platform: ArchivePlatform;
   readonly arch: ArchiveArch;
   readonly nodeEngine: string;
-  readonly createdAt: Date;
 }): ArchiveManifest {
   return {
     name: archiveFileName({
@@ -74,7 +72,6 @@ export function buildManifest(input: {
     platform: input.platform,
     arch: input.arch,
     node: input.nodeEngine,
-    createdAt: input.createdAt.toISOString(),
     roots: [...ARCHIVE_ROOTS],
   };
 }
@@ -128,18 +125,32 @@ export function archiveExcludedPrefixes(shared: ReadonlyArray<string>): Readonly
   ];
 }
 
+/**
+ * Two builds of one commit must produce one archive byte for byte: entry
+ * order, ownership and mtime are pinned (mtime to the commit's committer time,
+ * in whole seconds since the epoch) and gzip runs with -n so its header carries
+ * no timestamp. The manifest itself has no build time for the same reason.
+ */
 export function tarArguments(input: {
   readonly archivePath: string;
   readonly excludedPrefixes: ReadonlyArray<string>;
+  readonly mtimeEpochSeconds: number;
 }): ReadonlyArray<string> {
+  if (!Number.isInteger(input.mtimeEpochSeconds) || input.mtimeEpochSeconds < 0) {
+    throw new Error(
+      `mtimeEpochSeconds must be a non-negative integer, got ${input.mtimeEpochSeconds}`,
+    );
+  }
   return [
     "--sort=name",
     "--owner=0",
     "--group=0",
     "--numeric-owner",
+    `--mtime=@${input.mtimeEpochSeconds}`,
+    "--use-compress-program=gzip -n",
     ...ARCHIVE_EXTRA_EXCLUDES.map((glob) => `--exclude=${glob}`),
     ...input.excludedPrefixes.map((prefix) => `--exclude=${prefix}*`),
-    "-czf",
+    "-cf",
     input.archivePath,
     ...ARCHIVE_ROOTS,
   ];
