@@ -28,8 +28,8 @@ import type {
   SDKMessage,
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-import { spawn, type ChildProcess } from "node:child_process";
-import { createInterface } from "node:readline";
+import * as NodeChildProcess from "node:child_process";
+import * as NodeReadline from "node:readline";
 
 import type { ClaudeAdapterLiveOptions } from "../Layers/ClaudeAdapter.ts";
 
@@ -153,9 +153,12 @@ function startSidecarQuery(
   let stdinOpen = true;
 
   const childEnv: NodeJS.ProcessEnv = { ...sidecar.environment, ...(input.options.env ?? {}) };
-  let child: ChildProcess;
+  let child: NodeChildProcess.ChildProcess;
   try {
-    child = spawn(sidecarPath, [], { stdio: ["pipe", "pipe", "pipe"], env: childEnv });
+    child = NodeChildProcess.spawn(sidecarPath, [], {
+      stdio: ["pipe", "pipe", "pipe"],
+      env: childEnv,
+    });
   } catch (cause) {
     throw new Error(
       `Failed to spawn claude-lhc sidecar at ${sidecarPath}: ${cause instanceof Error ? cause.message : String(cause)}`,
@@ -200,7 +203,7 @@ function startSidecarQuery(
     log(`stdin: ${cause.message}`);
   });
   if (child.stderr !== null) {
-    createInterface({ input: child.stderr }).on("line", (line) => log(line));
+    NodeReadline.createInterface({ input: child.stderr }).on("line", (line) => log(line));
   }
 
   const answerRequest = async (frame: Extract<SidecarFrame, { type: "req" }>): Promise<void> => {
@@ -242,7 +245,7 @@ function startSidecarQuery(
   };
 
   if (child.stdout !== null) {
-    createInterface({ input: child.stdout, crlfDelay: Number.POSITIVE_INFINITY }).on(
+    NodeReadline.createInterface({ input: child.stdout, crlfDelay: Number.POSITIVE_INFINITY }).on(
       "line",
       (line) => {
         if (line.trim() === "") return;

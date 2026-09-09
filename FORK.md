@@ -41,6 +41,9 @@ and trust.
   survive, and the inventory matches the diff in both directions. It runs in
   `.github/workflows/lhc-quality.yml` on every push to `main`, alongside
   `vp check`, `vpr typecheck`, and the server/contracts/web tests.
+- Run `vp check` and the tests in a clean worktree with its own install, never
+  in the live checkout: it carries untracked artifacts (`dist.prev-*`) that
+  stop the check at formatting before lint, so a pass there is false.
 
 ## Sync drill (detail lands with the first controlled sync)
 

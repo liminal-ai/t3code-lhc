@@ -1,7 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
 
 import { describe, expect, it } from "vite-plus/test";
 
@@ -36,11 +36,13 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
 `;
 
 function makeFakeSidecar(): string {
-  const dir = mkdtempSync(join(tmpdir(), "claude-lhc-fake-"));
-  const script = join(dir, "sidecar.cjs");
-  writeFileSync(script, FAKE_SIDECAR);
-  const launcher = join(dir, "claude-lhc");
-  writeFileSync(launcher, `#!/bin/sh\nexec "${process.execPath}" "${script}"\n`, { mode: 0o755 });
+  const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "claude-lhc-fake-"));
+  const script = NodePath.join(dir, "sidecar.cjs");
+  NodeFS.writeFileSync(script, FAKE_SIDECAR);
+  const launcher = NodePath.join(dir, "claude-lhc");
+  NodeFS.writeFileSync(launcher, `#!/bin/sh\nexec "${process.execPath}" "${script}"\n`, {
+    mode: 0o755,
+  });
   return launcher;
 }
 
