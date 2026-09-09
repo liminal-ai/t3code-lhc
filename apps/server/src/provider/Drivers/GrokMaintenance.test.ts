@@ -24,6 +24,7 @@ import {
   ProviderVersionCache,
   resolveProviderMaintenanceCapabilitiesEffect,
   type ProviderMaintenanceCapabilities,
+  type ProviderMaintenanceResolutionContext,
 } from "../providerMaintenance.ts";
 import { makeProviderRegistryMock } from "../testUtils/providerRegistryMock.ts";
 import { grokMaintenanceResolver } from "./GrokDriver.ts";
@@ -32,59 +33,64 @@ const GROK_DRIVER = ProviderDriverKind.make("grok");
 
 // Two instances of the one Grok driver: a stock install and an LHC build. Both
 // update through their own binary; the configured path is the only routing.
-const stock = grokMaintenanceResolver.resolve({
-  binaryPath: "/usr/local/bin/grok",
-  env: { PATH: "" },
-});
-const lhc = grokMaintenanceResolver.resolve({
-  binaryPath: "/home/lee/.local/bin/grok-lhc",
-  env: { PATH: "" },
-});
+function located(commandPath: string): ProviderMaintenanceResolutionContext {
+  return {
+    binaryPath: commandPath,
+    resolvedCommandPath: commandPath,
+    realCommandPath: commandPath,
+    env: { PATH: "" },
+    platform: "linux",
+  };
+}
 
-it("updates each instance through its own configured binary under one Grok lock", () => {
-  expect(stock).toEqual({
-    provider: "grok",
-    packageName: null,
-    update: {
-      command: "/usr/local/bin/grok update",
-      executable: "/usr/local/bin/grok",
-      args: ["update"],
-      lockKey: "grok",
-    },
-  });
-  expect(lhc).toEqual({
-    provider: "grok",
-    packageName: null,
-    update: {
-      command: "/home/lee/.local/bin/grok-lhc update",
-      executable: "/home/lee/.local/bin/grok-lhc",
-      args: ["update"],
-      lockKey: "grok",
-    },
-  });
-});
-
-it("falls back to the grok command when an instance has no binary path", () => {
-  expect(grokMaintenanceResolver.resolve({ binaryPath: "  " }).update?.executable).toBe("grok");
-  expect(grokMaintenanceResolver.resolve().update?.executable).toBe("grok");
-});
-
-it("lets an instance update while its version status stays unknown", () => {
-  expect(
-    createProviderVersionAdvisory({
-      driver: lhc.provider,
+it.effect("updates each instance through its own configured binary under one Grok lock", () =>
+  Effect.gen(function* () {
+    const stock = yield* grokMaintenanceResolver.resolve(located("/usr/local/bin/grok"));
+    const lhc = yield* grokMaintenanceResolver.resolve(located("/home/lee/.local/bin/grok-lhc"));
+    expect(stock).toEqual({
+      provider: "grok",
+      packageName: null,
+      update: {
+        command: "/usr/local/bin/grok update",
+        executable: "/usr/local/bin/grok",
+        args: ["update"],
+        lockKey: "grok",
+      },
+    });
+    expect(lhc).toEqual({
+      provider: "grok",
+      packageName: null,
+      update: {
+        command: "/home/lee/.local/bin/grok-lhc update",
+        executable: "/home/lee/.local/bin/grok-lhc",
+        args: ["update"],
+        lockKey: "grok",
+      },
+    });
+    // The version status stays unknown while Update stays available.
+    expect(
+      createProviderVersionAdvisory({
+        driver: lhc.provider,
+        currentVersion: "1.0.16",
+        latestVersion: null,
+        maintenanceCapabilities: lhc,
+      }),
+    ).toMatchObject({
+      status: "unknown",
       currentVersion: "1.0.16",
       latestVersion: null,
-      maintenanceCapabilities: lhc,
-    }),
-  ).toMatchObject({
-    status: "unknown",
-    currentVersion: "1.0.16",
-    latestVersion: null,
-    canUpdate: true,
-    updateCommand: "/home/lee/.local/bin/grok-lhc update",
-  });
-});
+      canUpdate: true,
+      updateCommand: "/home/lee/.local/bin/grok-lhc update",
+    });
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.effect("offers no update when the configured binary cannot be found", () =>
+  Effect.gen(function* () {
+    const missing = yield* grokMaintenanceResolver.resolve(null);
+    expect(missing).toEqual({ provider: "grok", packageName: null, update: null });
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
 
 // Real execution through the maintenance runner with disposable command
 // fixtures standing in for the two binaries. Each fixture records how it was

@@ -10,6 +10,7 @@ FORK.md
 lhc-release/BASE
 lhc-release/BASE_TAG
 lhc-release/INVENTORY
+lhc-release/SYNCS.md
 scripts/check-lhc-touch.sh
 
 # Fork-owned: Claude LHC sidecar driver, LHC thread import

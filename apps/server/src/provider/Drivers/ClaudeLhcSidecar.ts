@@ -224,9 +224,17 @@ function startSidecarQuery(
       } else {
         if (input.options.onUserDialog === undefined)
           throw new Error("onUserDialog is not configured");
+        // SDK >= 0.3.260 hands `onUserDialog` a `requestId`; the sidecar's
+        // frame id is the per-request identity on this side of the pipe, and
+        // any `requestId` the sidecar forwards from the SDK overrides it.
+        const { request, ...dialogOptions } = frame.params;
         value = await input.options.onUserDialog(
-          frame.params.request as Parameters<NonNullable<ClaudeQueryOptions["onUserDialog"]>>[0],
-          { signal: controller.signal },
+          request as Parameters<NonNullable<ClaudeQueryOptions["onUserDialog"]>>[0],
+          {
+            requestId: String(frame.id),
+            ...dialogOptions,
+            signal: controller.signal,
+          } as Parameters<NonNullable<ClaudeQueryOptions["onUserDialog"]>>[1],
         );
       }
       if (!controller.signal.aborted) send({ type: "res", id: frame.id, ok: true, value });
