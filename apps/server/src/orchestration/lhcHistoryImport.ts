@@ -1,32 +1,40 @@
 /**
- * Raw-history backfill plan: cc-lhc thread record → offline orchestration commands.
+ * LHC raw-history import: neutral export (`lhc thread export`) → planned
+ * orchestration events for one `thread.lhc-history.import` command.
  *
- * Pure. Given the messages of a copied LHC thread (see `lhcThreadSource.ts`),
- * produce the ordered engine commands that make the t3code pane show the same
- * history the way a live claude-lhc session would have recorded it:
+ * Pure. Given the exported turns of an LHC thread, produce the ordered event
+ * bodies that make the t3code pane show the same history the way a live
+ * claude-lhc session would have recorded it:
  *
- * - every user prompt opens a t3code turn: user message + turn start, then a
- *   `running` session-set naming the turn; prompt-less LHC segment turns fold
- *   into the preceding prompted turn;
- * - each assistant text message is one delta + complete pair;
+ * - every user prompt opens a t3code turn: user message (bound to the turn),
+ *   then a `running` session-set naming the turn; prompt-less LHC segment
+ *   turns fold into the preceding prompted turn;
+ * - each assistant text message is one completed `message-sent`;
  * - each tool call closes as one `tool.completed` activity when its result
  *   arrives, classified/titled/summarized by the Claude adapter's own helpers;
  *   calls with no result close as failed when the turn ends;
  * - runtime notes become `context-compaction` (sidecar compaction notes) or
  *   `runtime.note` info activities;
- * - thinking is dropped; image/document blocks keep their text projection and
- *   are reported, never silently discarded;
+ * - image/document blocks keep their text projection and are reported, never
+ *   silently discarded; kinds the export omitted (thinking, markers, setting
+ *   changes) are reported from its `omitted` counts;
  * - a turn closes with `ready` (completed) or `interrupted` (source turn still
  *   open or aborted), and the stream ends in a `stopped` session.
  *
- * Timestamps come from the source event clock through a strictly increasing
- * millisecond clock, because the pane orders by string comparison. Ids are
- * deterministic (`lhcImportIds.ts`) and activity sequence numbers are monotonic.
+ * Never a `thread.turn-start-requested`: three reactors act on it (provider
+ * turn start, ingestion queue, checkpoint baseline) and this history must not
+ * run. Timestamps come from the source event clock through a strictly
+ * increasing millisecond clock, because the pane orders by string comparison.
+ * Ids are deterministic (`lhcImportIds.ts`) and activity sequence numbers are
+ * monotonic. The decider wraps each body in an event base stamped
+ * `metadata.historyImport`.
  */
 import {
-  CommandId,
   isToolLifecycleItemType,
-  type OrchestrationCommand,
+  type LhcHistoryExport,
+  type LhcHistoryMessage,
+  type LhcHistoryTurn,
+  type OrchestrationEvent,
   type OrchestrationSession,
   type OrchestrationThreadActivity,
   type ProviderInstanceId,
@@ -47,16 +55,27 @@ import {
   deriveImportedMessageId,
   deriveImportedTurnId,
 } from "./lhcImportIds.ts";
-import type { LhcSourceBlock, LhcSourceMessage, LhcSourceThread } from "./lhcThreadSource.ts";
 
 export interface LhcHistoryPlanInput {
-  readonly source: LhcSourceThread;
+  readonly history: LhcHistoryExport;
   readonly sourceThreadId: string;
   readonly threadId: ThreadId;
   readonly providerName: string;
   readonly providerInstanceId: ProviderInstanceId;
   readonly runtimeMode: RuntimeMode;
 }
+
+type EventBody<T extends OrchestrationEvent["type"]> = {
+  readonly type: T;
+  readonly occurredAt: string;
+  readonly payload: Extract<OrchestrationEvent, { type: T }>["payload"];
+};
+
+/** Event bodies the import may produce; the decider adds the event base. */
+export type LhcHistoryPlannedEvent =
+  | EventBody<"thread.message-sent">
+  | EventBody<"thread.session-set">
+  | EventBody<"thread.activity-appended">;
 
 export interface LhcUnsupportedBlock {
   readonly sourceMessageId: string;
@@ -89,10 +108,12 @@ export interface LhcHistoryReport {
     readonly kind: string;
     readonly reason: string;
   }>;
+  /** Kinds the exporter left out of the export, as it counted them. */
+  readonly omitted: Readonly<Record<string, number>>;
 }
 
 export interface LhcHistoryPlan {
-  readonly commands: ReadonlyArray<OrchestrationCommand>;
+  readonly events: ReadonlyArray<LhcHistoryPlannedEvent>;
   readonly report: LhcHistoryReport;
 }
 
@@ -133,7 +154,7 @@ function stringField(record: Record<string, unknown> | null, key: string): strin
 }
 
 /** Text projection of a message: block 0 carries the text-shaped form. */
-function messageText(message: LhcSourceMessage): string {
+function messageText(message: LhcHistoryMessage): string {
   return stringField(message.blocks[0]?.content ?? null, "text");
 }
 
@@ -141,7 +162,7 @@ function messageText(message: LhcSourceMessage): string {
  * Describe a non-text API block for the report: type, media type, and byte
  * size when the payload was offloaded to the blob table.
  */
-function describeBlock(block: LhcSourceBlock): string {
+function describeBlock(block: LhcHistoryMessage["blocks"][number]): string {
   const source = asRecord(block.content.source);
   const mediaType = stringField(source, "media_type");
   const data = asRecord(source?.data);
@@ -179,11 +200,23 @@ interface PendingToolCall {
   readonly input: Record<string, unknown>;
 }
 
+/** Messages in record order, each with the source turn that holds it. */
+function orderedMessages(
+  history: LhcHistoryExport,
+): ReadonlyArray<{ readonly message: LhcHistoryMessage; readonly turn: LhcHistoryTurn }> {
+  return [...history.turns]
+    .sort((left, right) => left.order - right.order)
+    .flatMap((turn) =>
+      [...turn.messages]
+        .sort((left, right) => left.eventOrder - right.eventOrder)
+        .map((message) => ({ message, turn })),
+    );
+}
+
 export function planLhcHistory(input: LhcHistoryPlanInput): LhcHistoryPlan {
-  const { source, sourceThreadId, threadId } = input;
+  const { history, sourceThreadId, threadId } = input;
   const clock = makeMonotonicClock();
-  const commands: Array<OrchestrationCommand> = [];
-  const sourceTurns = new Map(source.turns.map((turn) => [turn.turnId, turn] as const));
+  const events: Array<LhcHistoryPlannedEvent> = [];
 
   const unsupportedBlocks: Array<LhcUnsupportedBlock> = [];
   const danglingToolCalls: Array<LhcHistoryReport["danglingToolCalls"][number]> = [];
@@ -198,35 +231,31 @@ export function planLhcHistory(input: LhcHistoryPlanInput): LhcHistoryPlan {
   let sequence = 0;
 
   let activeTurnId: TurnId | null = null;
-  let lastSourceTurnId: string | null = null;
+  let lastSourceTurn: LhcHistoryTurn | null = null;
   let lastRecordedAt = "";
   const pendingTools = new Map<string, PendingToolCall>();
-
-  const commandId = () =>
-    CommandId.make(
-      `server:thread-import:${threadId}:${String(commands.length + 1).padStart(6, "0")}`,
-    );
 
   const sessionSet = (
     status: OrchestrationSession["status"],
     turnId: TurnId | null,
     at: string,
   ) => {
-    commands.push({
-      type: "thread.session.set",
-      commandId: commandId(),
-      threadId,
-      session: {
+    events.push({
+      type: "thread.session-set",
+      occurredAt: at,
+      payload: {
         threadId,
-        status,
-        providerName: input.providerName,
-        providerInstanceId: input.providerInstanceId,
-        runtimeMode: input.runtimeMode,
-        activeTurnId: turnId,
-        lastError: null,
-        updatedAt: at,
+        session: {
+          threadId,
+          status,
+          providerName: input.providerName,
+          providerInstanceId: input.providerInstanceId,
+          runtimeMode: input.runtimeMode,
+          activeTurnId: turnId,
+          lastError: null,
+          updatedAt: at,
+        },
       },
-      createdAt: at,
     });
   };
 
@@ -235,12 +264,10 @@ export function planLhcHistory(input: LhcHistoryPlanInput): LhcHistoryPlan {
     at: string,
   ) => {
     sequence += 1;
-    commands.push({
-      type: "thread.activity.append",
-      commandId: commandId(),
-      threadId,
-      activity: { ...activity, turnId: activeTurnId, sequence },
-      createdAt: at,
+    events.push({
+      type: "thread.activity-appended",
+      occurredAt: at,
+      payload: { threadId, activity: { ...activity, turnId: activeTurnId, sequence } },
     });
   };
 
@@ -303,14 +330,14 @@ export function planLhcHistory(input: LhcHistoryPlanInput): LhcHistoryPlan {
       toolActivity(call, null, clock(lastRecordedAt));
     }
     pendingTools.clear();
-    const sourceTurn = lastSourceTurnId === null ? undefined : sourceTurns.get(lastSourceTurnId);
-    const interrupted = sourceTurn?.status === "open" || sourceTurn?.outcome === "aborted";
+    const interrupted = lastSourceTurn?.status === "open" || lastSourceTurn?.outcome === "aborted";
     sessionSet(interrupted ? "interrupted" : "ready", null, clock(lastRecordedAt));
     activeTurnId = null;
     return interrupted;
   };
 
-  for (const message of source.messages) {
+  const messages = orderedMessages(history);
+  for (const { message, turn } of messages) {
     for (const block of message.blocks.slice(1)) {
       if (
         (message.kind === "user_prompt" || message.kind === "tool_result") &&
@@ -330,19 +357,22 @@ export function planLhcHistory(input: LhcHistoryPlanInput): LhcHistoryPlan {
         closeTurn();
         const turnId = deriveImportedTurnId(sourceThreadId, message.messageId);
         const at = clock(message.recordedAt);
-        commands.push({
-          type: "thread.turn.start",
-          commandId: commandId(),
-          threadId,
-          message: {
+        // Bound to its turn from the start: the live path binds through the
+        // pending turn start, which this import never emits.
+        events.push({
+          type: "thread.message-sent",
+          occurredAt: at,
+          payload: {
+            threadId,
             messageId: deriveImportedMessageId(sourceThreadId, message.messageId),
             role: "user",
             text: messageText(message),
             attachments: [],
+            turnId,
+            streaming: false,
+            createdAt: at,
+            updatedAt: at,
           },
-          runtimeMode: input.runtimeMode,
-          interactionMode: "default",
-          createdAt: at,
         });
         activeTurnId = turnId;
         sessionSet("running", turnId, clock(message.recordedAt));
@@ -360,31 +390,24 @@ export function planLhcHistory(input: LhcHistoryPlanInput): LhcHistoryPlan {
           });
           break;
         }
-        const messageId = deriveImportedMessageId(sourceThreadId, message.messageId);
-        const turn = activeTurnId === null ? {} : { turnId: activeTurnId };
-        commands.push({
-          type: "thread.message.assistant.delta",
-          commandId: commandId(),
-          threadId,
-          messageId,
-          delta: text,
-          ...turn,
-          createdAt: clock(message.recordedAt),
-        });
-        commands.push({
-          type: "thread.message.assistant.complete",
-          commandId: commandId(),
-          threadId,
-          messageId,
-          ...turn,
-          createdAt: clock(message.recordedAt),
+        const at = clock(message.recordedAt);
+        events.push({
+          type: "thread.message-sent",
+          occurredAt: at,
+          payload: {
+            threadId,
+            messageId: deriveImportedMessageId(sourceThreadId, message.messageId),
+            role: "assistant",
+            text,
+            turnId: activeTurnId,
+            streaming: false,
+            createdAt: at,
+            updatedAt: at,
+          },
         });
         assistantMessages += 1;
         break;
       }
-      case "assistant_thinking":
-        // Thinking never reaches the pane; the sidecar replays it from the record.
-        break;
       case "tool_call": {
         const toolCallId = stringField(head, "toolCallId");
         const toolName = stringField(head, "toolName") || "tool";
@@ -471,30 +494,6 @@ export function planLhcHistory(input: LhcHistoryPlanInput): LhcHistoryPlan {
         noteActivities += 1;
         break;
       }
-      case "model_change":
-      case "thinking_level_change":
-      case "compact_continuation_marker": {
-        const at = clock(message.recordedAt);
-        const summary =
-          message.kind === "model_change"
-            ? `Model changed: ${stringField(head, "previousModel")} → ${stringField(head, "newModel")}`
-            : message.kind === "thinking_level_change"
-              ? `Thinking level changed: ${stringField(head, "previousLevel")} → ${stringField(head, "newLevel")}`
-              : `Compact continuation (${stringField(head, "cause") || "unknown cause"})`;
-        appendActivity(
-          {
-            id: deriveImportedActivityId(sourceThreadId, `note:${message.messageId}`),
-            tone: "info",
-            kind: "runtime.note",
-            summary: truncate(summary, SUMMARY_LIMIT),
-            payload: { message: summary, kind: message.kind, content: head },
-            createdAt: at,
-          },
-          at,
-        );
-        noteActivities += 1;
-        break;
-      }
       default:
         skipped.push({
           sourceMessageId: message.messageId,
@@ -505,18 +504,18 @@ export function planLhcHistory(input: LhcHistoryPlanInput): LhcHistoryPlan {
     // Tracked after the switch so a prompt closes the previous turn against
     // the source turn that actually held its last message.
     lastRecordedAt = message.recordedAt;
-    lastSourceTurnId = message.turnId;
+    lastSourceTurn = turn;
   }
 
   if (activeTurnId !== null) {
     interruptedTail = closeTurn() === true;
   }
-  if (source.messages.length > 0) {
+  if (messages.length > 0) {
     sessionSet("stopped", null, clock(lastRecordedAt));
   }
 
   return {
-    commands,
+    events,
     report: {
       turnCount,
       userMessages,
@@ -528,6 +527,7 @@ export function planLhcHistory(input: LhcHistoryPlanInput): LhcHistoryPlan {
       danglingToolCalls,
       orphanToolResults,
       skipped,
+      omitted: history.omitted,
     },
   };
 }

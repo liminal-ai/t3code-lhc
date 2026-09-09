@@ -1,22 +1,29 @@
 /**
- * `t3 thread import` — offline import of an LHC thread shell into t3code.
+ * `t3 thread import` — import an LHC thread into t3code, live or offline.
  *
  * Creates the deterministic t3code thread on the claude-lhc provider instance,
- * optionally backfills the raw history from a *copy* of the source LHC thread
- * database (`--source-db`, see `lhcHistory.ts` for the mapping), and records
- * the stopped provider session runtime row that lets the next real turn resume
- * through the sidecar with `--resume-session-id`.
+ * optionally backfills its raw history from an LHC export (`--history`, the
+ * JSON `lhc thread export` writes; see `orchestration/lhcHistoryImport.ts` for
+ * the mapping), and records the stopped provider session runtime row that lets
+ * the next real turn resume through the sidecar with `--resume-session-id`.
  *
- * Write path is the offline orchestration engine only (same layer stack as
- * `t3 project`): validated commands, event store, projection pipeline, all in
- * process over the target userdata. There is deliberately no live HTTP fallback
- * and no direct event SQL. The command refuses while the server that owns the
- * userdata is running.
+ * The whole import is one validated command, `thread.lhc-history.import`,
+ * with or without history. While the server that owns the
+ * userdata is running, the command goes to it over HTTP dispatch (same route
+ * and token the project CLI uses) and lands in one transaction; otherwise the
+ * offline orchestration engine runs it in process over the userdata. There is
+ * no direct event SQL either way. The runtime row is written directly after a
+ * successful dispatch, as the offline path always did: the session directory
+ * reads it from SQLite on the next turn.
  */
 import * as NodeCrypto from "node:crypto";
 
 import {
+  AuthAdministrativeScopes,
+  type ClientOrchestrationCommand,
   CommandId,
+  EnvironmentHttpApi,
+  LhcHistoryExport,
   ProjectId,
   ProviderInstanceId,
   RuntimeMode,
@@ -24,14 +31,21 @@ import {
 } from "@t3tools/contracts";
 import * as Console from "effect/Console";
 import * as DateTime from "effect/DateTime";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as References from "effect/References";
 import * as Schema from "effect/Schema";
 import { Command, Flag, GlobalFlag } from "effect/unstable/cli";
+import { FetchHttpClient } from "effect/unstable/http";
+import * as HttpApiClient from "effect/unstable/httpapi/HttpApiClient";
 
+import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import * as ServerConfig from "../config.ts";
+import { type LhcHistoryReport, planLhcHistory } from "../orchestration/lhcHistoryImport.ts";
+import { deriveImportedThreadId } from "../orchestration/lhcImportIds.ts";
 import * as OrchestrationEngine from "../orchestration/Services/OrchestrationEngine.ts";
 import { OrchestrationLayerLive } from "../orchestration/runtimeLayer.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "../persistence/Layers/Sqlite.ts";
@@ -40,21 +54,16 @@ import * as RepositoryIdentityResolver from "../project/RepositoryIdentityResolv
 import { isProcessAlive, readPersistedServerRuntimeState } from "../serverRuntimeState.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import { projectLocationFlags, resolveCliAuthConfig } from "./config.ts";
-import { type LhcHistoryReport, planLhcHistory } from "./lhcHistory.ts";
-import { deriveImportedThreadId } from "./lhcImportIds.ts";
-import {
-  type LhcSourceThread,
-  LhcSourceReadError,
-  readLhcThreadSource,
-} from "./lhcThreadSource.ts";
 
-export { deriveImportedThreadId, uuidV5 } from "./lhcImportIds.ts";
+export { deriveImportedThreadId, uuidV5 } from "../orchestration/lhcImportIds.ts";
 
 /** Provider driver that owns claude-lhc sessions; matches live claude-lhc runtime rows. */
 const CLAUDE_PROVIDER_NAME = "claudeAgent";
 const DEFAULT_PROVIDER_INSTANCE_ID = "claude-lhc";
+/** A full record is thousands of events in one transaction; give the server time. */
+const LIVE_DISPATCH_TIMEOUT = Duration.seconds(120);
 
-const ImportCliRuntimeLive = Layer.mergeAll(
+const ImportOfflineRuntimeLive = Layer.mergeAll(
   WorkspacePaths.layer,
   Layer.mergeAll(OrchestrationLayerLive, ProviderSessionRuntime.layer).pipe(
     Layer.provideMerge(RepositoryIdentityResolver.layer),
@@ -62,17 +71,21 @@ const ImportCliRuntimeLive = Layer.mergeAll(
   ),
 );
 
-export class ImportThreadServerLiveError extends Schema.TaggedErrorClass<ImportThreadServerLiveError>()(
-  "ImportThreadServerLiveError",
+/** Runtime row only: the persistence layer waits on the server's lock rather than failing. */
+const ImportRuntimeRowLive = ProviderSessionRuntime.layer.pipe(
+  Layer.provideMerge(SqlitePersistenceLayerLive),
+);
+
+export class ImportThreadLiveDispatchError extends Schema.TaggedErrorClass<ImportThreadLiveDispatchError>()(
+  "ImportThreadLiveDispatchError",
   {
-    operation: Schema.Literal("refuseLiveServer"),
-    statePath: Schema.String,
-    pid: Schema.Int,
+    operation: Schema.Literal("dispatchLiveServer"),
     origin: Schema.String,
+    detail: Schema.String,
   },
 ) {
   override get message(): string {
-    return `A t3code server (pid ${this.pid}, ${this.origin}) is running against this userdata. Stop it before importing.`;
+    return `The running t3code server at ${this.origin} did not accept the import: ${this.detail}`;
   }
 }
 
@@ -92,42 +105,43 @@ export class ImportThreadInputError extends Schema.TaggedErrorClass<ImportThread
 export class ImportThreadSourceError extends Schema.TaggedErrorClass<ImportThreadSourceError>()(
   "ImportThreadSourceError",
   {
-    operation: Schema.Literal("readSource"),
+    operation: Schema.Literal("readHistory"),
     path: Schema.String,
     detail: Schema.String,
   },
 ) {
   override get message(): string {
-    return `Cannot use LHC thread copy at ${this.path}: ${this.detail}`;
+    return `Cannot use LHC history export at ${this.path}: ${this.detail}`;
   }
 }
 
+const decodeHistoryExport = Schema.decodeUnknownEffect(Schema.fromJsonString(LhcHistoryExport));
+
 /**
- * Read the copied LHC thread database and check it is the thread the caller
- * named. The live LHC record is never opened: the path must be a copy.
+ * Read the exported history and check it is the thread the caller named. The
+ * export is what `lhc thread export` wrote; the LHC record itself is never
+ * opened here.
  */
-const readImportSource = (path: string, sourceThreadId: string) =>
-  Effect.try({
-    try: () => readLhcThreadSource(path),
-    catch: (cause) =>
-      new ImportThreadSourceError({
-        operation: "readSource",
-        path,
-        detail: cause instanceof LhcSourceReadError ? cause.detail : String(cause),
-      }),
-  }).pipe(
-    Effect.flatMap((source) =>
-      source.threadId === sourceThreadId
-        ? Effect.succeed(source)
-        : Effect.fail(
-            new ImportThreadSourceError({
-              operation: "readSource",
-              path,
-              detail: `thread id '${source.threadId}' does not match --source-thread-id '${sourceThreadId}'`,
-            }),
-          ),
-    ),
+const readHistoryExport = Effect.fn("readHistoryExport")(function* (
+  path: string,
+  sourceThreadId: string,
+) {
+  const fileSystem = yield* FileSystem.FileSystem;
+  const sourceError = (detail: string) =>
+    new ImportThreadSourceError({ operation: "readHistory", path, detail });
+  const text = yield* fileSystem
+    .readFileString(path)
+    .pipe(Effect.mapError((cause) => sourceError(cause.message)));
+  const history = yield* decodeHistoryExport(text).pipe(
+    Effect.mapError((cause) => sourceError(`not an LHC history export: ${cause.message}`)),
   );
+  if (history.threadId !== sourceThreadId) {
+    return yield* sourceError(
+      `thread id '${history.threadId}' does not match --source-thread-id '${sourceThreadId}'`,
+    );
+  }
+  return history;
+});
 
 const requireTrimmed = (field: string, value: string) => {
   const trimmed = value.trim();
@@ -150,30 +164,30 @@ const decodeProviderInstanceId = (value: string) =>
     ),
   );
 
+export type ImportExecutionMode =
+  | { readonly mode: "live"; readonly origin: string }
+  | { readonly mode: "offline" };
+
 /**
- * Refuse while the server owning this userdata is alive. A stale state file
- * whose pid is gone does not block the import; it is logged and left in place.
+ * Live while the server owning this userdata is alive, offline otherwise. A
+ * stale state file whose pid is gone is logged and left in place.
  */
-const refuseLiveServer = Effect.fn("refuseLiveServer")(function* (statePath: string) {
+const resolveImportMode = Effect.fn("resolveImportMode")(function* (statePath: string) {
   const runtimeState = yield* readPersistedServerRuntimeState(statePath);
   if (Option.isNone(runtimeState)) {
-    return;
+    return { mode: "offline" } satisfies ImportExecutionMode;
   }
   if (isProcessAlive(runtimeState.value.pid)) {
-    return yield* new ImportThreadServerLiveError({
-      operation: "refuseLiveServer",
-      statePath,
-      pid: runtimeState.value.pid,
-      origin: runtimeState.value.origin,
-    });
+    return { mode: "live", origin: runtimeState.value.origin } satisfies ImportExecutionMode;
   }
   yield* Effect.logWarning("Ignoring stale server runtime state; its pid is not running.", {
     statePath,
     pid: runtimeState.value.pid,
   });
+  return { mode: "offline" } satisfies ImportExecutionMode;
 });
 
-export interface ImportThreadShellInput {
+export interface ImportThreadInput {
   readonly sourceThreadId: string;
   readonly resumeSessionId: string;
   readonly projectId: ProjectId;
@@ -184,67 +198,117 @@ export interface ImportThreadShellInput {
   readonly worktreePath: string | null;
   readonly branch: string | null;
   readonly runtimeMode: RuntimeMode;
-  /** Used only when no source copy is supplied; otherwise counted from folded turns. */
+  /** Used only when no history is supplied; otherwise counted from folded turns. */
   readonly turnCount: number;
-  /** Raw history of the copied source thread; omitted for a shell-only import. */
-  readonly source?: LhcSourceThread;
+  /** Exported raw history of the source thread; omitted for a shell-only import. */
+  readonly history?: LhcHistoryExport;
 }
 
-export interface ImportThreadResult {
+/** The command an import dispatches; client-dispatchable and an engine command. */
+export type ImportDispatchCommand = Extract<
+  ClientOrchestrationCommand,
+  { type: "thread.lhc-history.import" }
+>;
+
+export interface ImportThreadCommandPlan {
   readonly threadId: ThreadId;
+  readonly command: ImportDispatchCommand;
   readonly turnCount: number;
-  readonly history: LhcHistoryReport | null;
+  readonly report: LhcHistoryReport | null;
 }
 
 /**
- * Create the thread shell through the engine, replay the source history as
- * validated commands, then record the stopped runtime row whose `turnCount`
- * reflects the folded turns. Runs inside the offline runtime layer; no
- * provider is started.
+ * The one command an import dispatches: `thread.lhc-history.import` carrying
+ * the whole export, or an empty export for a shell-only import. Pure apart
+ * from the fresh command id; the thread id carries idempotency, so a second
+ * import of the same source is refused by the engine's thread-absent check.
  */
-export const importThreadShell = Effect.fn("importThreadShell")(function* (
-  input: ImportThreadShellInput,
-) {
-  const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
-  const runtimeRepository = yield* ProviderSessionRuntime.ProviderSessionRuntimeRepository;
+export function planImportThreadCommand(
+  input: ImportThreadInput,
+  createdAt: string,
+): ImportThreadCommandPlan {
   const threadId = deriveImportedThreadId(input.sourceThreadId);
-  const createdAt = DateTime.formatIso(yield* DateTime.now);
-
-  yield* orchestrationEngine.dispatch({
-    type: "thread.create",
-    // Receipts dedupe by command id, so the command id is fresh per run; the
-    // thread id is what carries idempotency.
-    commandId: CommandId.make(`server:thread-import:${NodeCrypto.randomUUID()}`),
+  const history: LhcHistoryExport = input.history ?? {
+    threadId: input.sourceThreadId,
+    exportedAt: createdAt,
+    turns: [],
+    omitted: {},
+  };
+  // Same pure plan the decider runs, for the report and the turn count.
+  const plan = planLhcHistory({
+    history,
+    sourceThreadId: input.sourceThreadId,
     threadId,
-    projectId: input.projectId,
-    title: input.title,
-    modelSelection: { instanceId: input.instanceId, model: input.model },
+    providerName: CLAUDE_PROVIDER_NAME,
+    providerInstanceId: input.instanceId,
     runtimeMode: input.runtimeMode,
-    interactionMode: "default",
-    branch: input.branch,
-    worktreePath: input.worktreePath,
-    createdAt,
   });
-
-  let history: LhcHistoryReport | null = null;
-  let turnCount = input.turnCount;
-  if (input.source !== undefined) {
-    const plan = planLhcHistory({
-      source: input.source,
-      sourceThreadId: input.sourceThreadId,
+  return {
+    threadId,
+    turnCount: input.history === undefined ? input.turnCount : plan.report.turnCount,
+    report: input.history === undefined ? null : plan.report,
+    command: {
+      type: "thread.lhc-history.import",
+      commandId: CommandId.make(`server:thread-import:${NodeCrypto.randomUUID()}`),
       threadId,
-      providerName: CLAUDE_PROVIDER_NAME,
-      providerInstanceId: input.instanceId,
+      sourceThreadId: input.sourceThreadId,
+      projectId: input.projectId,
+      title: input.title,
+      modelSelection: { instanceId: input.instanceId, model: input.model },
       runtimeMode: input.runtimeMode,
-    });
-    // Sequential: each command's decider reads the read model the previous one produced.
-    for (const command of plan.commands) {
-      yield* orchestrationEngine.dispatch(command);
-    }
-    history = plan.report;
-    turnCount = plan.report.turnCount;
-  }
+      branch: input.branch,
+      worktreePath: input.worktreePath,
+      providerName: CLAUDE_PROVIDER_NAME,
+      history,
+      createdAt,
+    },
+  };
+}
 
+const describeCause = (cause: unknown): string =>
+  cause instanceof Error ? cause.message : String(cause);
+
+/** One HTTP dispatch to the running server, with the same route the project CLI uses. */
+const dispatchToLiveServer = (origin: string, token: string, command: ImportDispatchCommand) =>
+  Effect.gen(function* () {
+    const client = yield* HttpApiClient.make(EnvironmentHttpApi, { baseUrl: origin });
+    return yield* client.orchestration.dispatch({
+      headers: { authorization: `Bearer ${token}` },
+      payload: command,
+    } as Parameters<typeof client.orchestration.dispatch>[0]);
+  }).pipe(
+    Effect.timeout(LIVE_DISPATCH_TIMEOUT),
+    Effect.mapError(
+      (cause) =>
+        new ImportThreadLiveDispatchError({
+          operation: "dispatchLiveServer",
+          origin,
+          detail: describeCause(cause),
+        }),
+    ),
+  );
+
+const withImportSessionToken = <A, E, R>(
+  environmentAuth: EnvironmentAuth.EnvironmentAuth["Service"],
+  run: (token: string) => Effect.Effect<A, E, R>,
+) =>
+  Effect.acquireUseRelease(
+    environmentAuth.issueSession({
+      scopes: AuthAdministrativeScopes,
+      label: "t3 thread import",
+    }),
+    (issued) => run(issued.token),
+    (issued) => environmentAuth.revokeSession(issued.sessionId).pipe(Effect.ignore({ log: true })),
+  );
+
+/** The stopped runtime row whose cursor the sidecar consumes on the next turn. */
+const recordRuntimeRow = Effect.fn("recordRuntimeRow")(function* (
+  input: ImportThreadInput,
+  threadId: ThreadId,
+  turnCount: number,
+  lastSeenAt: string,
+) {
+  const runtimeRepository = yield* ProviderSessionRuntime.ProviderSessionRuntimeRepository;
   yield* runtimeRepository.upsert({
     threadId,
     providerName: CLAUDE_PROVIDER_NAME,
@@ -252,7 +316,7 @@ export const importThreadShell = Effect.fn("importThreadShell")(function* (
     adapterKey: CLAUDE_PROVIDER_NAME,
     runtimeMode: input.runtimeMode,
     status: "stopped",
-    lastSeenAt: createdAt,
+    lastSeenAt,
     resumeCursor: {
       threadId,
       resume: input.resumeSessionId,
@@ -260,8 +324,6 @@ export const importThreadShell = Effect.fn("importThreadShell")(function* (
     },
     runtimePayload: { cwd: input.cwd, model: input.model },
   });
-
-  return { threadId, turnCount, history };
 });
 
 /** Human-readable report lines for the history backfill; nothing is dropped silently. */
@@ -269,6 +331,12 @@ export function describeHistoryReport(report: LhcHistoryReport): ReadonlyArray<s
   const lines = [
     `Backfilled ${report.userMessages} user + ${report.assistantMessages} assistant messages, ${report.toolActivities} tool and ${report.noteActivities} note activities across ${report.turnCount} turns${report.interruptedTail ? " (last turn interrupted)" : ""}.`,
   ];
+  const omitted = Object.entries(report.omitted)
+    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+    .map(([kind, count]) => `${kind} ${count}`);
+  if (omitted.length > 0) {
+    lines.push(`Kept in the LHC record only (not exported): ${omitted.join(", ")}.`);
+  }
   for (const block of report.unsupportedBlocks) {
     lines.push(
       `Unsupported block kept as text: ${block.kind} ${block.sourceMessageId} → ${block.description}`,
@@ -297,7 +365,7 @@ const threadImportCommand = Command.make("import", {
   ),
   resumeSessionId: Flag.string("resume-session-id").pipe(
     Flag.withDescription(
-      "Session id registered by the LHC adopt step; stored as the resume cursor.",
+      "Session id bound by `lhc thread fork --host claude-lhc`; stored as the resume cursor.",
     ),
   ),
   project: Flag.string("project").pipe(Flag.withDescription("Target t3code project id.")),
@@ -324,19 +392,19 @@ const threadImportCommand = Command.make("import", {
   ),
   turnCount: Flag.integer("turn-count").pipe(
     Flag.withDescription(
-      "Turn count for the resume cursor when no --source-db is given; with a source it is counted from folded turns.",
+      "Turn count for the resume cursor when no --history is given; with a history it is counted from folded turns.",
     ),
     Flag.withDefault(0),
   ),
-  sourceDb: Flag.string("source-db").pipe(
+  history: Flag.string("history").pipe(
     Flag.withDescription(
-      "Path to a COPY of the source LHC thread database (SQLite backup/VACUUM copy). Its raw history is backfilled; the live record is never opened.",
+      "Path to the JSON written by `lhc thread export` for the source thread. Its raw history is backfilled in the same command that creates the thread.",
     ),
     Flag.optional,
   ),
 }).pipe(
   Command.withDescription(
-    "Import an LHC thread shell into this userdata offline. Refuses while the server is running.",
+    "Import an LHC thread (shell, optionally with its exported history) into this userdata: through the running server when there is one, offline otherwise.",
   ),
   Command.withHandler((flags) =>
     Effect.gen(function* () {
@@ -362,18 +430,11 @@ const threadImportCommand = Command.make("import", {
         return trimmed !== undefined && trimmed.length > 0 ? trimmed : null;
       };
 
-      const sourceDb = optionalTrimmed(flags.sourceDb);
-      const source =
-        sourceDb === null ? undefined : yield* readImportSource(sourceDb, sourceThreadId);
+      const historyPath = optionalTrimmed(flags.history);
+      const history =
+        historyPath === null ? undefined : yield* readHistoryExport(historyPath, sourceThreadId);
 
-      yield* refuseLiveServer(config.serverRuntimeStatePath);
-
-      const offlineRuntimeLayer = ImportCliRuntimeLive.pipe(
-        Layer.provide(ServerConfig.layer(config)),
-        Layer.provide(Layer.succeed(References.MinimumLogLevel, config.logLevel)),
-      );
-
-      const imported = yield* importThreadShell({
+      const input: ImportThreadInput = {
         sourceThreadId,
         resumeSessionId,
         projectId,
@@ -385,16 +446,50 @@ const threadImportCommand = Command.make("import", {
         branch: optionalTrimmed(flags.branch),
         runtimeMode: flags.runtimeMode,
         turnCount: flags.turnCount,
-        ...(source === undefined ? {} : { source }),
-      }).pipe(Effect.provide(offlineRuntimeLayer));
+        ...(history === undefined ? {} : { history }),
+      };
+      const createdAt = DateTime.formatIso(yield* DateTime.now);
+      const planned = planImportThreadCommand(input, createdAt);
+      const serverConfigLayer = Layer.mergeAll(
+        ServerConfig.layer(config),
+        Layer.succeed(References.MinimumLogLevel, config.logLevel),
+      );
 
-      if (imported.history !== null) {
-        for (const line of describeHistoryReport(imported.history)) {
+      const execution = yield* resolveImportMode(config.serverRuntimeStatePath);
+      if (execution.mode === "live") {
+        yield* Effect.gen(function* () {
+          const environmentAuth = yield* EnvironmentAuth.EnvironmentAuth;
+          yield* withImportSessionToken(environmentAuth, (token) =>
+            dispatchToLiveServer(execution.origin, token, planned.command),
+          );
+        }).pipe(
+          Effect.provide(
+            EnvironmentAuth.runtimeLayer.pipe(
+              Layer.provideMerge(FetchHttpClient.layer),
+              Layer.provide(serverConfigLayer),
+            ),
+          ),
+        );
+        yield* recordRuntimeRow(input, planned.threadId, planned.turnCount, createdAt).pipe(
+          Effect.provide(ImportRuntimeRowLive.pipe(Layer.provide(serverConfigLayer))),
+        );
+      } else {
+        yield* Effect.gen(function* () {
+          const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
+          yield* orchestrationEngine.dispatch(planned.command);
+          yield* recordRuntimeRow(input, planned.threadId, planned.turnCount, createdAt);
+        }).pipe(Effect.provide(ImportOfflineRuntimeLive.pipe(Layer.provide(serverConfigLayer))));
+      }
+
+      if (planned.report !== null) {
+        for (const line of describeHistoryReport(planned.report)) {
           yield* Console.log(line);
         }
       }
+      const via =
+        execution.mode === "live" ? `via the running server at ${execution.origin}` : "offline";
       yield* Console.log(
-        `Imported thread ${imported.threadId} (${title}) from LHC thread ${sourceThreadId} on ${instanceId}; resume session ${resumeSessionId}, ${imported.turnCount} turns.`,
+        `Imported thread ${planned.threadId} (${title}) from LHC thread ${sourceThreadId} on ${instanceId} ${via}; resume session ${resumeSessionId}, ${planned.turnCount} turns.`,
       );
     }),
   ),

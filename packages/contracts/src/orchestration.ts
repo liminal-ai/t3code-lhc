@@ -1065,6 +1065,70 @@ const ThreadSessionStopCommand = Schema.Struct({
   onlyIfSettled: Schema.optional(Schema.Boolean),
 });
 
+/**
+ * Neutral raw-history export of an LHC thread (`lhc thread export`): turns in
+ * record order, each with its messages and API blocks. Mirrors the LHC SDK's
+ * `HistoryExport` so t3code carries no dependency on it. Consumed only by
+ * `thread.lhc-history.import`.
+ */
+const LhcHistoryBlock = Schema.Struct({
+  blockType: Schema.String,
+  content: Schema.Record(Schema.String, Schema.Unknown),
+});
+const LhcHistoryMessage = Schema.Struct({
+  messageId: Schema.String,
+  kind: Schema.String,
+  eventOrder: Schema.Number,
+  recordedAt: Schema.String,
+  actor: Schema.String,
+  harness: Schema.String,
+  blocks: Schema.Array(LhcHistoryBlock),
+});
+export type LhcHistoryMessage = typeof LhcHistoryMessage.Type;
+const LhcHistoryTurn = Schema.Struct({
+  turnId: Schema.String,
+  order: Schema.Number,
+  status: Schema.Literals(["open", "closed"]),
+  outcome: Schema.NullOr(Schema.Literals(["completed", "aborted"])),
+  outcomeReason: Schema.NullOr(Schema.String),
+  messages: Schema.Array(LhcHistoryMessage),
+});
+export type LhcHistoryTurn = typeof LhcHistoryTurn.Type;
+export const LhcHistoryExport = Schema.Struct({
+  threadId: Schema.String,
+  exportedAt: Schema.String,
+  turns: Schema.Array(LhcHistoryTurn),
+  /** Kinds the exporter left out, counted. */
+  omitted: Schema.Record(Schema.String, Schema.Number),
+});
+export type LhcHistoryExport = typeof LhcHistoryExport.Type;
+
+/**
+ * LHC fork import (t3code-lhc): create a thread and backfill its history from
+ * an LHC export in one command, so a running server takes the whole import in
+ * one transaction. The decider emits only created / message-sent /
+ * session-set / activity-appended events, every one stamped
+ * `metadata.historyImport`, and never a turn start: nothing here may start a
+ * provider turn, enqueue ingestion work, or take a checkpoint baseline.
+ */
+const ThreadLhcHistoryImportCommand = Schema.Struct({
+  type: Schema.Literal("thread.lhc-history.import"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  sourceThreadId: TrimmedNonEmptyString,
+  projectId: ProjectId,
+  title: TrimmedNonEmptyString,
+  modelSelection: ModelSelection,
+  runtimeMode: RuntimeMode,
+  branch: Schema.NullOr(TrimmedNonEmptyString),
+  worktreePath: Schema.NullOr(TrimmedNonEmptyString),
+  /** Provider driver recorded on the imported session rows (`claudeAgent`). */
+  providerName: TrimmedNonEmptyString,
+  history: LhcHistoryExport,
+  createdAt: IsoDateTime,
+});
+export type ThreadLhcHistoryImportCommand = typeof ThreadLhcHistoryImportCommand.Type;
+
 const DispatchableClientOrchestrationCommand = Schema.Union([
   ProjectCreateCommand,
   ProjectMetaUpdateCommand,
@@ -1091,6 +1155,7 @@ const DispatchableClientOrchestrationCommand = Schema.Union([
   ThreadUserInputDismissCommand,
   ThreadCheckpointRevertCommand,
   ThreadSessionStopCommand,
+  ThreadLhcHistoryImportCommand,
 ]);
 export type DispatchableClientOrchestrationCommand =
   typeof DispatchableClientOrchestrationCommand.Type;
@@ -1121,6 +1186,7 @@ export const ClientOrchestrationCommand = Schema.Union([
   ThreadUserInputDismissCommand,
   ThreadCheckpointRevertCommand,
   ThreadSessionStopCommand,
+  ThreadLhcHistoryImportCommand,
 ]);
 export type ClientOrchestrationCommand = typeof ClientOrchestrationCommand.Type;
 

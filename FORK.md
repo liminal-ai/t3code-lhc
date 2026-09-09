@@ -4,7 +4,7 @@ Fork of [`pingdotgg/t3code`](https://github.com/pingdotgg/t3code) adding a
 [Claude LHC](https://github.com/liminal-ai/long-horizon-context) provider: the
 Claude Agent SDK driven through the `claude-lhc` sidecar, so every thread has an
 event-sourced record and banded compaction instead of native auto-compact; plus
-an offline importer for existing cc-lhc threads and routing of Codex/Grok
+an importer for existing LHC threads (one command, live or offline) and routing of Codex/Grok
 provider updates to our own forks. No feature work rides on this repo beyond
 that. Everything here exists to make the fork simple to sync, build, release,
 and trust.

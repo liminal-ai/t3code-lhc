@@ -37,6 +37,7 @@ import {
   requireThreadNotArchived,
 } from "./commandInvariants.ts";
 import { projectEvent } from "./projector.ts";
+import { planLhcHistory } from "./lhcHistoryImport.ts";
 import { threadHasQueuedTurnStart } from "./ThreadSettlementPolicy.ts";
 
 const isScriptRunCommand = Schema.is(SCRIPT_RUN_COMMAND_PATTERN);
@@ -1602,6 +1603,78 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           updatedAt: settledAt,
         },
       });
+      return events;
+    }
+
+    case "thread.lhc-history.import": {
+      // t3code-lhc fork: one command carries a thread and its whole LHC
+      // history so a running server imports it in one transaction. Only
+      // created / message-sent / session-set / activity-appended events, every
+      // one flagged historyImport (relay and checkpoint reactors skip those),
+      // and never a turn start: see lhcHistoryImport.ts.
+      const importProject = yield* requireProject({
+        readModel,
+        command,
+        projectId: command.projectId,
+      });
+      // requireProject accepts soft-deleted projects (thread.create relies on
+      // that for drafts); an import into a deleted project would vanish from
+      // the pane, so it is refused here.
+      if (importProject.deletedAt !== null) {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: `Project '${command.projectId}' is deleted; import into an active project.`,
+        });
+      }
+      yield* requireThreadAbsent({
+        readModel,
+        command,
+        threadId: command.threadId,
+      });
+      // An empty history imports the shell alone (the resume cursor still
+      // carries the record); nothing to refuse.
+      const plan = planLhcHistory({
+        history: command.history,
+        sourceThreadId: command.sourceThreadId,
+        threadId: command.threadId,
+        providerName: command.providerName,
+        providerInstanceId: command.modelSelection.instanceId,
+        runtimeMode: command.runtimeMode,
+      });
+      const importBase = (occurredAt: string) =>
+        withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt,
+          commandId: command.commandId,
+          metadata: { historyImport: true },
+        });
+      const events: Array<PlannedOrchestrationEvent> = [
+        {
+          ...(yield* importBase(command.createdAt)),
+          type: "thread.created",
+          payload: {
+            threadId: command.threadId,
+            projectId: command.projectId,
+            title: command.title,
+            modelSelection: command.modelSelection,
+            runtimeMode: command.runtimeMode,
+            interactionMode: "default",
+            branch: command.branch,
+            worktreePath: command.worktreePath,
+            createdAt: command.createdAt,
+            updatedAt: command.createdAt,
+          },
+        },
+      ];
+      for (const planned of plan.events) {
+        const base = yield* importBase(planned.occurredAt);
+        events.push({
+          ...base,
+          type: planned.type,
+          payload: planned.payload,
+        } as PlannedOrchestrationEvent);
+      }
       return events;
     }
 

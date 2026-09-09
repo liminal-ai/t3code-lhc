@@ -16,17 +16,17 @@ lhc-release/version.json
 scripts/check-lhc-touch.sh
 
 # Fork-owned: identity, Claude LHC sidecar driver, LHC thread import
-apps/server/src/cli/lhcHistory.ts
-apps/server/src/cli/lhcImportIds.ts
-apps/server/src/cli/lhcSourceFixture.ts
-apps/server/src/cli/lhcThreadSource.ts
 apps/server/src/cli/thread.ts
 apps/server/src/lhcVersion.ts
+apps/server/src/orchestration/lhcHistoryFixture.ts
+apps/server/src/orchestration/lhcHistoryImport.ts
+apps/server/src/orchestration/lhcImportIds.ts
 apps/server/src/provider/Drivers/ClaudeLhcSidecar.ts
 
 # Upstream files touched (additive, minimal)
 apps/server/src/bin.ts
 apps/server/src/environment/ServerEnvironment.ts
+apps/server/src/orchestration/decider.ts
 apps/server/src/provider/Drivers/ClaudeDriver.ts
 apps/server/src/provider/Drivers/CodexDriver.ts
 apps/server/src/provider/Drivers/GrokDriver.ts
@@ -34,12 +34,14 @@ apps/server/src/provider/Layers/ClaudeAdapter.ts
 docs/user/install.md
 docs/user/providers-codex.md
 packages/contracts/src/environment.ts
+packages/contracts/src/orchestration.ts
 packages/contracts/src/settings.ts
 
 # Tests: fork-owned
-apps/server/src/cli/lhcHistory.test.ts
 apps/server/src/cli/thread.test.ts
 apps/server/src/lhcVersion.test.ts
+apps/server/src/orchestration/decider.lhcHistoryImport.test.ts
+apps/server/src/orchestration/lhcHistoryImport.test.ts
 apps/server/src/provider/Drivers/ClaudeLhcSidecar.test.ts
 apps/server/src/provider/Drivers/CodexMaintenance.test.ts
 apps/server/src/provider/Drivers/GrokMaintenance.test.ts

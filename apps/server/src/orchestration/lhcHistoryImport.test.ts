@@ -1,16 +1,15 @@
 import { assert, describe, it } from "@effect/vitest";
-import { ProviderInstanceId, type OrchestrationCommand } from "@t3tools/contracts";
+import { type LhcHistoryExport, ProviderInstanceId } from "@t3tools/contracts";
 
-import { planLhcHistory } from "./lhcHistory.ts";
+import { makeFixtureHistory, FIXTURE_SOURCE_THREAD_ID } from "./lhcHistoryFixture.ts";
+import { type LhcHistoryPlannedEvent, planLhcHistory } from "./lhcHistoryImport.ts";
 import { deriveImportedThreadId, deriveImportedTurnId } from "./lhcImportIds.ts";
-import { FIXTURE_SOURCE_THREAD_ID, makeFixtureThread } from "./lhcSourceFixture.ts";
-import type { LhcSourceThread } from "./lhcThreadSource.ts";
 
 const threadId = deriveImportedThreadId(FIXTURE_SOURCE_THREAD_ID);
 
-const plan = (source: LhcSourceThread = makeFixtureThread()) =>
+const plan = (history: LhcHistoryExport = makeFixtureHistory()) =>
   planLhcHistory({
-    source,
+    history,
     sourceThreadId: FIXTURE_SOURCE_THREAD_ID,
     threadId,
     providerName: "claudeAgent",
@@ -18,46 +17,43 @@ const plan = (source: LhcSourceThread = makeFixtureThread()) =>
     runtimeMode: "full-access",
   });
 
-const commandLabel = (command: OrchestrationCommand): string => {
-  switch (command.type) {
-    case "thread.session.set":
-      return `session:${command.session.status}`;
-    case "thread.activity.append":
-      return `activity:${command.activity.kind}`;
-    case "thread.message.assistant.delta":
-      return "assistant.delta";
-    case "thread.message.assistant.complete":
-      return "assistant.complete";
-    default:
-      return command.type;
+const label = (event: LhcHistoryPlannedEvent): string => {
+  switch (event.type) {
+    case "thread.session-set":
+      return `session:${event.payload.session.status}`;
+    case "thread.activity-appended":
+      return `activity:${event.payload.activity.kind}`;
+    case "thread.message-sent":
+      return event.payload.role;
   }
 };
 
-const activities = (commands: ReadonlyArray<OrchestrationCommand>) =>
-  commands.flatMap((command) =>
-    command.type === "thread.activity.append" ? [command.activity] : [],
+const activities = (events: ReadonlyArray<LhcHistoryPlannedEvent>) =>
+  events.flatMap((event) =>
+    event.type === "thread.activity-appended" ? [event.payload.activity] : [],
   );
+
+const messages = (events: ReadonlyArray<LhcHistoryPlannedEvent>) =>
+  events.flatMap((event) => (event.type === "thread.message-sent" ? [event.payload] : []));
 
 const asRecord = (value: unknown) => value as Record<string, unknown>;
 
 describe("planLhcHistory", () => {
   it("folds prompt-less segment turns and orders each prompted turn as the live path does", () => {
-    const { commands, report } = plan();
-    assert.deepStrictEqual(commands.map(commandLabel), [
+    const { events, report } = plan();
+    assert.deepStrictEqual(events.map(label), [
       // t1 (with t2 folded in)
-      "thread.turn.start",
+      "user",
       "session:running",
       "activity:tool.completed",
-      "assistant.delta",
-      "assistant.complete",
+      "assistant",
       "activity:context-compaction",
       "activity:tool.completed",
-      "assistant.delta",
-      "assistant.complete",
+      "assistant",
       "activity:runtime.note",
       "session:ready",
       // t3, still open in the source
-      "thread.turn.start",
+      "user",
       "session:running",
       "activity:tool.completed",
       "session:interrupted",
@@ -71,35 +67,55 @@ describe("planLhcHistory", () => {
     assert.isTrue(report.interruptedTail);
     assert.deepStrictEqual(report.skipped, []);
     assert.deepStrictEqual(report.orphanToolResults, []);
+    assert.deepStrictEqual(report.omitted, { assistant_thinking: 1 });
 
     const firstTurnId = deriveImportedTurnId(FIXTURE_SOURCE_THREAD_ID, "m1");
     const secondTurnId = deriveImportedTurnId(FIXTURE_SOURCE_THREAD_ID, "m11");
-    const running = commands.filter(
-      (command) => command.type === "thread.session.set" && command.session.status === "running",
+    const running = events.filter(
+      (event) => event.type === "thread.session-set" && event.payload.session.status === "running",
     );
     assert.deepStrictEqual(
-      running.map((command) =>
-        command.type === "thread.session.set" ? command.session.activeTurnId : null,
+      running.map((event) =>
+        event.type === "thread.session-set" ? event.payload.session.activeTurnId : null,
       ),
       [firstTurnId, secondTurnId],
     );
+    // Every message is bound to its folded turn, user prompts included: the
+    // live path binds through a pending turn start, which this import never emits.
+    assert.deepStrictEqual(
+      messages(events).map((message) => [message.role, message.turnId, message.streaming]),
+      [
+        ["user", firstTurnId, false],
+        ["assistant", firstTurnId, false],
+        ["assistant", firstTurnId, false],
+        ["user", secondTurnId, false],
+      ],
+    );
     // Everything from source turn t2 carries the first t3code turn id.
-    const foldedTurnIds = activities(commands)
+    const foldedTurnIds = activities(events)
       .slice(0, 4)
       .map((activity) => activity.turnId);
     assert.deepStrictEqual(foldedTurnIds, [firstTurnId, firstTurnId, firstTurnId, firstTurnId]);
-    const settledSessions = commands.filter((command) => command.type === "thread.session.set");
-    for (const command of settledSessions) {
-      if (command.type === "thread.session.set" && command.session.status !== "running") {
-        assert.isNull(command.session.activeTurnId);
-        assert.isNull(command.session.lastError);
+    for (const event of events) {
+      if (event.type === "thread.session-set" && event.payload.session.status !== "running") {
+        assert.isNull(event.payload.session.activeTurnId);
+        assert.isNull(event.payload.session.lastError);
       }
     }
   });
 
+  it("never plans a turn start: three reactors act on it live", () => {
+    const types = new Set(plan().events.map((event) => event.type));
+    assert.deepStrictEqual([...types].sort(), [
+      "thread.activity-appended",
+      "thread.message-sent",
+      "thread.session-set",
+    ]);
+  });
+
   it("maps tool calls to one completed activity each with the adapter's classification", () => {
-    const { commands, report } = plan();
-    const tools = activities(commands).filter((activity) => activity.kind === "tool.completed");
+    const { events, report } = plan();
+    const tools = activities(events).filter((activity) => activity.kind === "tool.completed");
     assert.lengthOf(tools, 3);
     const [bash, read, dangling] = tools.map((activity) => asRecord(activity.payload));
     assert.deepStrictEqual(bash, {
@@ -137,8 +153,8 @@ describe("planLhcHistory", () => {
   });
 
   it("turns runtime notes into compaction or info activities", () => {
-    const { commands } = plan();
-    const notes = activities(commands).filter((activity) => activity.tone === "info");
+    const { events } = plan();
+    const notes = activities(events).filter((activity) => activity.tone === "info");
     assert.lengthOf(notes, 2);
     const [compaction, note] = notes;
     assert.strictEqual(compaction?.kind, "context-compaction");
@@ -154,18 +170,15 @@ describe("planLhcHistory", () => {
   });
 
   it("keeps the text projection of unsupported blocks and reports them", () => {
-    const { commands, report } = plan();
-    const secondPrompt = commands.find(
-      (command) =>
-        command.type === "thread.turn.start" && command.message.text.includes("screenshot"),
+    const { events, report } = plan();
+    const secondPrompt = messages(events).find(
+      (message) => message.role === "user" && message.text.includes("screenshot"),
     );
     assert.isDefined(secondPrompt);
-    if (secondPrompt?.type === "thread.turn.start") {
-      assert.strictEqual(
-        secondPrompt.message.text,
-        "What is in this screenshot?\n[image · image/png · 4.0 KB]",
-      );
-    }
+    assert.strictEqual(
+      secondPrompt?.text,
+      "What is in this screenshot?\n[image · image/png · 4.0 KB]",
+    );
     assert.deepStrictEqual(report.unsupportedBlocks, [
       {
         sourceMessageId: "m11",
@@ -177,29 +190,32 @@ describe("planLhcHistory", () => {
   });
 
   it("feeds a strictly increasing clock from source timestamps and numbers activities monotonically", () => {
-    const { commands } = plan();
-    const stamps = commands.map((command) => ("createdAt" in command ? command.createdAt : ""));
+    const { events } = plan();
+    const stamps = events.map((event) => event.occurredAt);
     for (let index = 1; index < stamps.length; index += 1) {
       assert.isTrue(
         stamps[index]! > stamps[index - 1]!,
-        `createdAt must increase at command ${index}: ${stamps[index - 1]} → ${stamps[index]}`,
+        `occurredAt must increase at event ${index}: ${stamps[index - 1]} → ${stamps[index]}`,
       );
     }
     assert.strictEqual(stamps[0], "2025-09-04T15:33:20.000Z");
-    // m4 and m5 share 2000ms in the source: the assistant delta lands one ms after the tool activity.
-    const sequences = activities(commands).map((activity) => activity.sequence);
+    // m4 and m5 share 2000ms in the source: the assistant text lands one ms after the tool activity.
+    const sequences = activities(events).map((activity) => activity.sequence);
     assert.deepStrictEqual(sequences, [1, 2, 3, 4, 5]);
-    const sessionUpdates = commands.flatMap((command) =>
-      command.type === "thread.session.set"
-        ? [command.session.updatedAt === command.createdAt]
-        : [],
-    );
-    assert.isTrue(sessionUpdates.every(Boolean));
+    for (const event of events) {
+      const stamp =
+        event.type === "thread.session-set"
+          ? event.payload.session.updatedAt
+          : event.type === "thread.activity-appended"
+            ? event.payload.activity.createdAt
+            : event.payload.createdAt;
+      assert.strictEqual(stamp, event.occurredAt);
+    }
   });
 
   it("closes legacy null outcomes as completed and aborted or open turns as interrupted", () => {
-    const base = makeFixtureThread();
-    const closedTail: LhcSourceThread = {
+    const base = makeFixtureHistory();
+    const closedTail: LhcHistoryExport = {
       ...base,
       turns: base.turns.map((turn) =>
         turn.turnId === "t3" ? { ...turn, status: "closed", outcome: null } : turn,
@@ -207,12 +223,12 @@ describe("planLhcHistory", () => {
     };
     const closed = plan(closedTail);
     assert.isFalse(closed.report.interruptedTail);
-    assert.deepStrictEqual(closed.commands.map(commandLabel).slice(-3), [
+    assert.deepStrictEqual(closed.events.map(label).slice(-3), [
       "activity:tool.completed",
       "session:ready",
       "session:stopped",
     ]);
-    const abortedTail: LhcSourceThread = {
+    const abortedTail: LhcHistoryExport = {
       ...base,
       turns: base.turns.map((turn) =>
         turn.turnId === "t3" ? { ...turn, status: "closed", outcome: "aborted" } : turn,
@@ -221,36 +237,58 @@ describe("planLhcHistory", () => {
     assert.isTrue(plan(abortedTail).report.interruptedTail);
   });
 
+  it("orders by turn order and event order, not array position", () => {
+    const base = makeFixtureHistory();
+    const shuffled: LhcHistoryExport = {
+      ...base,
+      turns: [...base.turns].reverse().map((turn) => ({
+        ...turn,
+        messages: [...turn.messages].reverse(),
+      })),
+    };
+    assert.deepStrictEqual(plan(shuffled).events, plan(base).events);
+  });
+
   it("is deterministic and drops nothing silently", () => {
     const first = plan();
     const second = plan();
-    assert.deepStrictEqual(first.commands, second.commands);
-    const orphan: LhcSourceThread = {
-      ...makeFixtureThread(),
-      messages: [
-        ...makeFixtureThread().messages,
-        {
-          messageId: "m13",
-          kind: "tool_result",
-          turnId: "t3",
-          sourceEventOrder: 13,
-          recordedAt: "2025-09-04T15:33:27.000Z",
-          blocks: [
-            {
-              blockType: "tool_result",
-              content: { toolCallId: "toolu_99", content: "late", isError: false },
+    assert.deepStrictEqual(first.events, second.events);
+    const base = makeFixtureHistory();
+    const orphan: LhcHistoryExport = {
+      ...base,
+      turns: base.turns.map((turn) =>
+        turn.turnId !== "t3"
+          ? turn
+          : {
+              ...turn,
+              messages: [
+                ...turn.messages,
+                {
+                  messageId: "m13",
+                  kind: "tool_result",
+                  eventOrder: 13,
+                  recordedAt: "2025-09-04T15:33:27.000Z",
+                  actor: "tool",
+                  harness: "cc",
+                  blocks: [
+                    {
+                      blockType: "tool_result",
+                      content: { toolCallId: "toolu_99", content: "late", isError: false },
+                    },
+                  ],
+                },
+                {
+                  messageId: "m14",
+                  kind: "mystery",
+                  eventOrder: 14,
+                  recordedAt: "2025-09-04T15:33:28.000Z",
+                  actor: "assistant",
+                  harness: "cc",
+                  blocks: [],
+                },
+              ],
             },
-          ],
-        },
-        {
-          messageId: "m14",
-          kind: "mystery",
-          turnId: "t3",
-          sourceEventOrder: 14,
-          recordedAt: "2025-09-04T15:33:28.000Z",
-          blocks: [],
-        },
-      ],
+      ),
     };
     const { report } = plan(orphan);
     assert.deepStrictEqual(report.orphanToolResults, [
@@ -259,6 +297,6 @@ describe("planLhcHistory", () => {
     assert.deepStrictEqual(report.skipped, [
       { sourceMessageId: "m14", kind: "mystery", reason: "unknown message kind" },
     ]);
-    assert.deepStrictEqual(plan({ ...makeFixtureThread(), messages: [] }).commands, []);
+    assert.deepStrictEqual(plan({ ...base, turns: [] }).events, []);
   });
 });
