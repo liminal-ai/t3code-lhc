@@ -61,6 +61,44 @@ and trust.
    `vp check`, `vpr typecheck`, the tests; record conflicts, checks, and wall
    time in the sync record. Fast-forward `main` after review.
 
+## Archive, install, launcher (slice 4)
+
+- Build: `node scripts/build-lhc-archive.ts` (flags `--skip-build`, `--keep-stage`,
+  `--arch`, `--out`). Produces `dist-lhc/t3code-lhc-<version>-linux-<arch>.tar.gz`
+  plus `.sha256`; inside: `manifest.json`, `apps/server/dist` (web client at
+  `dist/client`, no source maps), `node_modules` (runtime externals staged like the
+  desktop sidecar's Linux half, pty.node compiled on the build host, glibc >= 2.34).
+  The script refuses to emit an archive whose extracted tree does not answer
+  `--lhc-version` with the manifest identity.
+- Install or update: `scripts/install-lhc.sh [--archive FILE | --use VERSION]`.
+  Store at `~/.local/share/t3code-lhc`: `versions/<version>/`, `current` symlink
+  (swapped only after the extracted tree answers `--lhc-version`), `bin/t3code-lhc`
+  launcher, `receipt.json` (version, upstreamTag, prefix, name, source, sha256,
+  installedAt, previous). With no `--archive` it reads
+  `liminal-ai/t3code-lhc` releases/latest and installs only if the asset version
+  differs from the receipt: equality, never ordering. Old versions stay; rollback
+  is `--use <version>`. It never touches systemd. Tests: `scripts/install-lhc.test.sh`.
+- Launcher: `<prefix>/bin/t3code-lhc` execs `node current/apps/server/dist/bin.mjs`.
+  Activation on this box (not done yet): change the last line of
+  `~/.t3code/run-server.sh` from `node /srv/work/t3code/apps/server/dist/bin.mjs ...`
+  to `"$HOME/.local/share/t3code-lhc/bin/t3code-lhc" ...` with the same arguments and
+  environment, then restart `t3code-3773.service`.
+- Release tags on the fork repo are `lhc-v<version>` (upstream tags are fetched
+  into the same local namespace, so a bare `v0.0.40` would clash). The displayed
+  version stays `<version>` without the prefix.
+
+## CLI text that still names npm `t3` (documented exclusion)
+
+Upstream text that suggests `npx t3 ...` is left untouched so no extra upstream
+file joins the inventory: `apps/server/src/cli/invocation.ts` (`formatCliCommand`
+prints `t3 <subcommand>` for a non-runner entry path, so an archive install is
+told `t3 serve`; read it as `t3code-lhc serve`), `cli/pair.ts` (`npx t3 serve` /
+`npx t3 connect`), `cli/service.ts` (`npx t3@<version> service update`) and
+`cli/triagePrompt.ts`. `t3 service` and server self-update install the npm
+package and are unsupported on the fork build; an archive install advertises no
+self-update capability (`cloud/selfUpdate.ts`: not desktop- or boot-service-managed),
+so the UI's update path is inert.
+
 ## Never run here
 
 `npx t3@latest`, `t3 service install` pointing at the npm package, any

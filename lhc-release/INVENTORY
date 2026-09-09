@@ -43,6 +43,14 @@ apps/server/src/provider/Drivers/ClaudeLhcSidecar.test.ts
 apps/server/src/provider/Drivers/CodexMaintenance.test.ts
 apps/server/src/provider/Drivers/GrokMaintenance.test.ts
 
+# Fork-owned: archive, install, launcher (slice 4)
+scripts/build-lhc-archive.ts
+scripts/lib/lhc-archive.ts
+scripts/lib/lhc-archive.test.ts
+scripts/install-lhc.sh
+scripts/install-lhc.test.sh
+.gitignore
+
 # Tests: upstream test files touched
 apps/server/src/environment/ServerEnvironment.test.ts
 apps/server/src/provider/Layers/ProviderInstanceRegistryLive.test.ts
