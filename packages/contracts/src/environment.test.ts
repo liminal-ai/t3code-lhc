@@ -14,6 +14,19 @@ const descriptor = {
 } as const;
 
 describe("ExecutionEnvironmentDescriptor", () => {
+  it("treats a missing lhcFork field as a stock server", () => {
+    expect(decodeDescriptor(descriptor).lhcFork).toBeUndefined();
+  });
+
+  it("preserves the LHC fork identity when advertised", () => {
+    expect(
+      decodeDescriptor({
+        ...descriptor,
+        lhcFork: { version: "0.0.40-lhc.1", upstreamTag: "v0.0.40" },
+      }).lhcFork,
+    ).toEqual({ version: "0.0.40-lhc.1", upstreamTag: "v0.0.40" });
+  });
+
   it("treats a missing pull-request capability as unsupported under version skew", () => {
     expect(decodeDescriptor(descriptor).capabilities.pullRequests).toBeUndefined();
   });

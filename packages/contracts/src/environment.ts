@@ -156,6 +156,16 @@ export const ExecutionEnvironmentDescriptor = Schema.Struct({
   label: TrimmedNonEmptyString,
   platform: ExecutionEnvironmentPlatform,
   serverVersion: TrimmedNonEmptyString,
+  /** Present only on an LHC fork build: the upstream version it incorporates
+      (optionally with a `-lhc.N` fork revision suffix) and the upstream tag
+      that version was released as. Absent on stock servers; never ordered by
+      code, compared for equality only. */
+  lhcFork: Schema.optionalKey(
+    Schema.Struct({
+      version: TrimmedNonEmptyString,
+      upstreamTag: TrimmedNonEmptyString,
+    }),
+  ),
   capabilities: ExecutionEnvironmentCapabilities,
 });
 export type ExecutionEnvironmentDescriptor = typeof ExecutionEnvironmentDescriptor.Type;

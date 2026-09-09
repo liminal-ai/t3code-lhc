@@ -21,6 +21,7 @@ import * as ServerConfig from "../config.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import { resolveServerEnvironmentLabel } from "./ServerEnvironmentLabel.ts";
 import { detectServerEnvironmentMachineKind } from "./ServerEnvironmentMachine.ts";
+import { LHC_UPSTREAM_TAG, LHC_VERSION } from "../lhcVersion.ts";
 
 export class ServerEnvironmentIdPersistenceError extends Schema.TaggedErrorClass<ServerEnvironmentIdPersistenceError>()(
   "ServerEnvironmentIdPersistenceError",
@@ -211,6 +212,7 @@ export const make = Effect.gen(function* () {
       ...(machine === null ? {} : { machine }),
     },
     serverVersion: packageJson.version,
+    lhcFork: { version: LHC_VERSION, upstreamTag: LHC_UPSTREAM_TAG },
     capabilities: {
       repositoryIdentity: true,
       connectionProbe: true,

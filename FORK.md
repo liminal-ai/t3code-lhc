@@ -23,13 +23,18 @@ and trust.
 
 - `lhc-release/BASE` is the upstream commit `main` is built on;
   `lhc-release/BASE_TAG` is the upstream tag that commit was released as
-  (today `v0.0.39-nightly.20260904.1278`). Both advance together on every sync.
-- The fork's version is the upstream version it incorporates, taken from
-  `BASE_TAG` minus the leading `v`, including a nightly's full string. It is
-  _not_ `package.json`'s `version`: upstream computes nightly strings at build
-  time and leaves the tree at the last stable. A fork-only fix gets a fork
-  revision suffix; the identity plumbing (VERSION file, CLI flag, server
-  environment field) is the next slice.
+  (today `v0.0.40`). Both advance together on every sync.
+- `lhc-release/version.json` is the identity both `t3 --lhc-version` and the
+  server's environment descriptor (`lhcFork`) read. Its `version` is the
+  upstream version we incorporate, `BASE_TAG` minus the leading `v`, including
+  a nightly's full string; it is _not_ `package.json`'s `version`, which
+  upstream leaves at the last stable. A fork-only fix landed between syncs
+  appends `-lhc.N` (N from 1), dropped again at the next sync. The check
+  script keeps `version.json` and `BASE_TAG` in step.
+- Fork versions are never ordered by code, here or in any installer: "latest"
+  is GitHub's latest-release marker, and every check is an equality check.
+  `-lhc.N` sorts below its base under semver and nightly strings already carry
+  a prerelease part, so any comparison would be wrong.
 
 ## Footprint and the check
 
@@ -52,7 +57,7 @@ and trust.
 2. In a worktree off `main`: `git merge <tag>^{commit}`; resolve conflicts only
    on inventoried paths; `git rm` every `.github/workflows/*` not prefixed
    `lhc-` (upstream re-adds them; keep them deleted).
-3. Update `BASE`, `BASE_TAG`, `INVENTORY`; run `scripts/check-lhc-touch.sh`,
+3. Update `BASE`, `BASE_TAG`, `version.json`, `INVENTORY`; run `scripts/check-lhc-touch.sh`,
    `vp check`, `vpr typecheck`, the tests; record conflicts, checks, and wall
    time in the sync record. Fast-forward `main` after review.
 

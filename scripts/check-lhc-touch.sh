@@ -7,6 +7,9 @@
 #   1. BASE is a commit here and an ancestor of <head>.
 #   2. If BASE_TAG exists locally, its peeled commit equals BASE (skipped with a
 #      note when the tag is absent; tags live on the `upstream` remote).
+#   2b. lhc-release/version.json: upstreamTag equals BASE_TAG, and version is
+#      that tag minus the leading v, optionally followed by a -lhc.N fork
+#      revision suffix (N >= 1). Versions are never ordered here or anywhere.
 #   3. Workflows: every deletion under .github/workflows/ is expected and not
 #      inventoried; every file under .github/workflows/ in <head> starts with lhc-.
 #   4. Inventory, both ways: every other path in `git diff BASE..<head>` is listed
@@ -41,6 +44,19 @@ if peeled=$(git rev-parse -q --verify "refs/tags/$tag^{commit}" 2>/dev/null); th
   fi
 else
   note "note: tag $tag not present locally, peel check skipped (git fetch upstream --tags to enable)"
+fi
+
+# 2b. version.json agrees with BASE_TAG
+vj_version=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' lhc-release/version.json | head -1)
+vj_tag=$(sed -n 's/.*"upstreamTag"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' lhc-release/version.json | head -1)
+if [ "$vj_tag" != "$tag" ]; then
+  bad "version.json upstreamTag '$vj_tag' is not BASE_TAG '$tag'"
+fi
+expected_version=${tag#v}
+if printf '%s' "$vj_version" | grep -Eq "^$(printf '%s' "$expected_version" | sed 's/[.]/\\./g')(-lhc\.[1-9][0-9]*)?$"; then
+  note "version.json: $vj_version (upstream $vj_tag)"
+else
+  bad "version.json version '$vj_version' is not '$expected_version' with an optional -lhc.N suffix"
 fi
 
 # 3. Workflows rule

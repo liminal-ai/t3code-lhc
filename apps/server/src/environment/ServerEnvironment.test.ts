@@ -17,6 +17,7 @@ import {
 } from "../cloud/config.ts";
 import * as ServerConfig from "../config.ts";
 import * as ServerEnvironment from "./ServerEnvironment.ts";
+import { LHC_UPSTREAM_TAG, LHC_VERSION } from "../lhcVersion.ts";
 
 const isServerEnvironmentIdPersistenceError = Schema.is(
   ServerEnvironment.ServerEnvironmentIdPersistenceError,
@@ -161,6 +162,7 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
       }).pipe(Effect.provide(makeServerEnvironmentLayer(baseDir)));
 
       expect(first.environmentId).toBe(second.environmentId);
+      expect(second.lhcFork).toEqual({ version: LHC_VERSION, upstreamTag: LHC_UPSTREAM_TAG });
       expect(second.capabilities.repositoryIdentity).toBe(true);
       expect(second.capabilities.connectionProbe).toBe(true);
       expect(second.capabilities.attachmentUploads).toBe(true);

@@ -14,6 +14,7 @@ import { pairCommand } from "./cli/pair.ts";
 import { hasCloudPublicConfig } from "./cloud/publicConfig.ts";
 import { sharedServerCommandFlags } from "./cli/config.ts";
 import { isEntrypoint } from "./entrypoint.ts";
+import { lhcVersionFlag, printLhcVersion } from "./lhcVersion.ts";
 import { projectCommand } from "./cli/project.ts";
 import { runServerCommand, serveCommand, startCommand } from "./cli/server.ts";
 import { serviceCommand } from "./cli/service.ts";
@@ -49,9 +50,9 @@ const connectUnavailableCommand = Command.make("connect", {
 );
 
 export const makeCli = ({ cloudEnabled = hasCloudPublicConfig } = {}) =>
-  Command.make("t3", { ...sharedServerCommandFlags }).pipe(
+  Command.make("t3", { ...sharedServerCommandFlags, lhcVersion: lhcVersionFlag }).pipe(
     Command.withDescription("Run the T3 Code server."),
-    Command.withHandler((flags) => runServerCommand(flags)),
+    Command.withHandler((flags) => (flags.lhcVersion ? printLhcVersion : runServerCommand(flags))),
     Command.withSubcommands([
       startCommand,
       serveCommand,
