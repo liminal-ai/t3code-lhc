@@ -125,7 +125,11 @@ if [ -n "$ARCHIVE" ]; then
   cp "$ARCHIVE.sha256" "$WORK/$NAME.sha256"
 else
   echo "install-lhc: reading $RELEASES_URL"
-  curl -fsSL "$RELEASES_URL" -o "$WORK/release.json" || die "could not read releases JSON at $RELEASES_URL"
+  # GITHUB_TOKEN, when set, only authenticates the releases JSON read (hosted
+  # runners share an anonymous rate limit); asset downloads stay anonymous.
+  auth=()
+  [ -n "${GITHUB_TOKEN:-}" ] && auth=(-H "Authorization: Bearer $GITHUB_TOKEN")
+  curl -fsSL "${auth[@]}" "$RELEASES_URL" -o "$WORK/release.json" || die "could not read releases JSON at $RELEASES_URL"
   NAME="$(node -e '
 const rel = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
 const suffix = process.argv[2];

@@ -1,0 +1,208 @@
+# Fork-owned release pipeline for liminal-ai/t3code-lhc (see FORK.md, Release).
+# Dispatch only. Every run builds a candidate archive, runs the scripts tests,
+# and proves it on a clean host. With promote=true the exact qualified artifact
+# becomes the GitHub release lhc-v<version> marked latest (the tag is created
+# here, so a tag exists only for a promoted build), and a fresh runner then
+# installs it with scripts/install-lhc.sh from releases/latest.
+name: LHC release
+
+on:
+  workflow_dispatch:
+    inputs:
+      promote:
+        description: "Create release lhc-v<version> from the qualified artifact and mark it latest"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lhc-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  candidate:
+    name: Candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.identity.outputs.version }}
+      name: ${{ steps.identity.outputs.name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: true
+
+      - name: Build archive
+        run: node scripts/build-lhc-archive.ts
+
+      - name: Identity
+        id: identity
+        run: |
+          version="$(node -p 'require("./lhc-release/version.json").version')"
+          name="t3code-lhc-${version}-linux-x64"
+          test -f "dist-lhc/${name}.tar.gz"
+          test -f "dist-lhc/${name}.tar.gz.sha256"
+          tar -xzf "dist-lhc/${name}.tar.gz" -C dist-lhc manifest.json
+          mv dist-lhc/manifest.json "dist-lhc/${name}.manifest.json"
+          commit="$(node -p "require('./dist-lhc/${name}.manifest.json').commit")"
+          [ "$commit" = "${{ github.sha }}" ] || { echo "manifest commit $commit is not ${{ github.sha }}"; exit 1; }
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "name=${name}" >> "$GITHUB_OUTPUT"
+          cat "dist-lhc/${name}.tar.gz.sha256"
+
+      - name: Archive unit tests
+        run: vp test run lib/lhc-archive.test.ts
+        working-directory: scripts
+
+      - name: Installer tests
+        run: scripts/install-lhc.test.sh
+
+      - name: Upload candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.identity.outputs.name }}
+          path: |
+            dist-lhc/*.tar.gz
+            dist-lhc/*.tar.gz.sha256
+            dist-lhc/*.manifest.json
+          if-no-files-found: error
+          retention-days: 14
+
+  clean_host:
+    name: Clean host
+    needs: candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout scripts
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /scripts/
+          sparse-checkout-cone-mode: false
+
+      - name: Download candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.candidate.outputs.name }}
+          path: dist-lhc
+
+      - name: Clean-host proof
+        run: scripts/lhc-clean-host-proof.sh "dist-lhc/${{ needs.candidate.outputs.name }}.tar.gz"
+
+  promote:
+    name: Promote
+    if: ${{ inputs.promote }}
+    needs: [candidate, clean_host]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.candidate.outputs.version }}
+      NAME: ${{ needs.candidate.outputs.name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /lhc-release/
+          sparse-checkout-cone-mode: false
+
+      - name: Download qualified artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.candidate.outputs.name }}
+          path: dist-lhc
+
+      - name: Verify exact artifact
+        run: |
+          cd dist-lhc && sha256sum -c "${NAME}.tar.gz.sha256"
+          commit="$(node -p "require('./${NAME}.manifest.json').commit")"
+          [ "$commit" = "${{ github.sha }}" ] || { echo "manifest commit $commit is not ${{ github.sha }}"; exit 1; }
+          [ "$(node -p "require('./${NAME}.manifest.json').version")" = "$VERSION" ]
+
+      - name: Refuse an existing tag or release
+        run: |
+          tag="lhc-v${VERSION}"
+          if [ -n "$(git ls-remote --tags origin "refs/tags/${tag}")" ]; then
+            echo "tag ${tag} already exists; publish a new -lhc.N version instead"; exit 1
+          fi
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            echo "release ${tag} already exists; publish a new -lhc.N version instead"; exit 1
+          fi
+
+      - name: Tag the qualified commit
+        run: |
+          git config user.name "lhc-release"
+          git config user.email "lhc-release@users.noreply.github.com"
+          git tag -a "lhc-v${VERSION}" "${{ github.sha }}" -m "t3code-lhc ${VERSION}"
+          git push origin "refs/tags/lhc-v${VERSION}"
+
+      - name: Create release and mark latest
+        run: |
+          upstream="$(node -p 'require("./lhc-release/version.json").upstreamTag')"
+          base="$(cat lhc-release/BASE)"
+          {
+            echo "t3code-lhc ${VERSION} (upstream ${upstream}, BASE ${base}), commit ${{ github.sha }}."
+            echo
+            echo "Install or update: \`scripts/install-lhc.sh\` (see FORK.md). Linux x64, Node 24 and the claude-lhc sidecar are prerequisites."
+            echo "Qualified by run ${{ github.run_id }}: build, scripts tests, clean-host proof; local smoke recorded in the campaign evidence."
+          } > notes.md
+          gh release create "lhc-v${VERSION}" \
+            --target "${{ github.sha }}" \
+            --title "t3code-lhc ${VERSION}" \
+            --notes-file notes.md \
+            --latest \
+            "dist-lhc/${NAME}.tar.gz" \
+            "dist-lhc/${NAME}.tar.gz.sha256" \
+            "dist-lhc/${NAME}.manifest.json"
+
+  public_check:
+    name: Public install check
+    if: ${{ inputs.promote }}
+    needs: [candidate, promote]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.candidate.outputs.version }}
+    steps:
+      - name: Checkout scripts
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /scripts/
+            /lhc-release/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+
+      - name: Install from releases/latest
+        run: |
+          prefix="$RUNNER_TEMP/t3code-lhc"
+          scripts/install-lhc.sh --prefix "$prefix"
+          got="$("$prefix/bin/t3code-lhc" --lhc-version)"
+          want="t3code-lhc ${VERSION} (upstream $(node -p 'require("./lhc-release/version.json").upstreamTag'))"
+          [ "$got" = "$want" ] || { echo "installed identity [$got] is not [$want]"; exit 1; }
+          echo "installed: $got"
+          cat "$prefix/receipt.json"
+          scripts/install-lhc.sh --prefix "$prefix" | tee second.log
+          grep -q "already at ${VERSION}" second.log

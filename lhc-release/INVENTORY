@@ -6,6 +6,7 @@
 
 # Fork-owned: release process and contract
 .github/workflows/lhc-quality.yml
+.github/workflows/lhc-release.yml
 FORK.md
 lhc-release/BASE
 lhc-release/BASE_TAG
@@ -49,6 +50,8 @@ scripts/lib/lhc-archive.ts
 scripts/lib/lhc-archive.test.ts
 scripts/install-lhc.sh
 scripts/install-lhc.test.sh
+scripts/lhc-clean-host-proof.sh
+lhc-release/RELEASES.md
 .gitignore
 
 # Tests: upstream test files touched

@@ -1,7 +1,7 @@
 # Fork-owned quality gate for liminal-ai/t3code-lhc. The inherited upstream
 # workflows are removed on every sync (see FORK.md); only lhc-* workflows live
 # here. Runs on GitHub-hosted runners: check, typecheck, touch inventory,
-# server tests (sharded), contracts + web tests. No Electron, desktop, mobile,
+# scripts tests, server tests (sharded), contracts + web tests. No Electron, desktop, mobile,
 # Rust, or publishing steps.
 name: LHC quality
 
@@ -49,6 +49,13 @@ jobs:
 
       - name: Typecheck
         run: vpr typecheck
+
+      - name: Archive unit tests
+        run: vp test run lib/lhc-archive.test.ts
+        working-directory: scripts
+
+      - name: Installer tests
+        run: scripts/install-lhc.test.sh
 
   test_server:
     name: Test Server ${{ matrix.shard }}

@@ -99,6 +99,29 @@ package and are unsupported on the fork build; an archive install advertises no
 self-update capability (`cloud/selfUpdate.ts`: not desktop- or boot-service-managed),
 so the UI's update path is inert.
 
+## Release (slice 5)
+
+`lhc-release.yml` is dispatch only (a tag never triggers it).
+
+- Candidate: dispatch with `promote` unchecked. The run builds the archive on a
+  hosted runner, runs the two scripts tests, proves the archive on a clean host
+  (`scripts/lhc-clean-host-proof.sh`, same file locally), and uploads
+  `<name>.tar.gz`, `.sha256`, `.manifest.json` as one artifact (14 days).
+- Qualification: those jobs green, plus the local gate on the same artifact:
+  install into a scratch prefix and port with the live sidecar, the campaign's
+  13-step smoke against it (tool turns, manual compact, restart, resume), one
+  stock desktop client against that port. Recorded in the campaign evidence.
+- Promote: dispatch with `promote` checked from the qualified commit. The run
+  rebuilds, re-qualifies, verifies the manifest commit equals the run's SHA,
+  creates the annotated tag `lhc-v<version>` at that SHA, and creates the GitHub
+  release from those exact bytes with `--latest`. A tag exists only for a
+  promoted build. An existing tag or release fails the run: never re-promote,
+  publish `<upstream>-lhc.N+1`. Releases are never deleted or moved.
+- Public check: a fresh runner runs `scripts/install-lhc.sh` with no `--archive`
+  against releases/latest, requires the launcher to print the promoted identity,
+  and requires a second run to no-op ("already at").
+- Record: one line per promoted release in `lhc-release/RELEASES.md`.
+
 ## Never run here
 
 `npx t3@latest`, `t3 service install` pointing at the npm package, any
