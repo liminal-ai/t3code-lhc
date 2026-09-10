@@ -203,6 +203,14 @@ export function tarArguments(input: {
   ];
 }
 
+/** Extract args. `--force-local` must precede `-xzf` so `-f` is not that flag. */
+export function tarExtractArguments(input: {
+  readonly archivePath: string;
+  readonly forceLocal?: boolean;
+}): ReadonlyArray<string> {
+  return [...(input.forceLocal === true ? ["--force-local"] : []), "-xzf", input.archivePath];
+}
+
 /** True when `tar --version` is GNU tar (required for --sort/--mtime/--owner). */
 export function isGnuTarVersion(versionText: string): boolean {
   return /\bGNU tar\b/i.test(versionText);

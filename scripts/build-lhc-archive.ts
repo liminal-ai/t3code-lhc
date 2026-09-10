@@ -52,6 +52,7 @@ import {
   sha256Line,
   stageDependencies,
   tarArguments,
+  tarExtractArguments,
 } from "./lib/lhc-archive.ts";
 import {
   assertSidecarPin,
@@ -529,11 +530,10 @@ function main() {
     try {
       run(
         gnuTar,
-        [
-          "-xzf",
-          ...(archivePathNeedsForceLocal(archivePath) ? ["--force-local"] : []),
+        tarExtractArguments({
           archivePath,
-        ],
+          forceLocal: archivePathNeedsForceLocal(archivePath),
+        }),
         probe,
         withGnuTarPath(),
       );

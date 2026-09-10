@@ -12,6 +12,7 @@ import {
   sha256Line,
   stageDependencies,
   tarArguments,
+  tarExtractArguments,
 } from "./lhc-archive.ts";
 
 describe("lhc-archive", () => {
@@ -123,6 +124,15 @@ describe("lhc-archive", () => {
         forceLocal: true,
       })[0],
     ).toBe("--force-local");
+    expect(tarExtractArguments({ archivePath: "C:\\out\\a.tar.gz", forceLocal: true })).toEqual([
+      "--force-local",
+      "-xzf",
+      "C:\\out\\a.tar.gz",
+    ]);
+    expect(tarExtractArguments({ archivePath: "/out/a.tar.gz" })).toEqual([
+      "-xzf",
+      "/out/a.tar.gz",
+    ]);
     expect(() =>
       tarArguments({ archivePath: "/out/a.tar.gz", excludedPrefixes: [], mtimeEpochSeconds: 1.5 }),
     ).toThrow(/non-negative integer/);
