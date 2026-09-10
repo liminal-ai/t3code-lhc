@@ -235,7 +235,18 @@ jobs:
           if [ "${{ matrix.platform }}" = "win32" ]; then
             test -d "$prefix/current/node_modules/@yuuang/ffi-rs-win32-x64-msvc"
             test -d "$prefix/current/node_modules/@ff-labs/fff-bin-win32-x64"
-            node -e 'require(process.argv[1]+"/node_modules/@ff-labs/fff-node"); console.log("fff native: PASS")' "$prefix/current"
+            node --input-type=module -e '
+              import fs from "node:fs";
+              import path from "node:path";
+              import { pathToFileURL } from "node:url";
+              const root = process.argv[1];
+              const fffRoot = path.join(root, "node_modules/@ff-labs/fff-node");
+              const pkg = JSON.parse(fs.readFileSync(path.join(fffRoot, "package.json"), "utf8"));
+              const entry = pkg.exports["."].import;
+              const mod = await import(pathToFileURL(path.join(fffRoot, entry)).href);
+              if (typeof mod.FileFinder !== "function") process.exit(1);
+              console.log("fff native: PASS");
+            ' "$prefix/current"
           fi
 
   promote:

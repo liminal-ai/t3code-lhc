@@ -88,7 +88,8 @@ and trust.
   `receipt.json` (version, upstreamTag, prefix, name, source, sha256,
   installedAt, previous). Run `scripts/install-lhc.sh` from Git Bash on Windows
   (PowerShell cannot execute it). `mv` of the extracted tree is portable (no GNU
-  `mv -T`); `readlink -f` and `sha256sum` are present on the supported hosts.
+  `mv -T`). Checksums use Node crypto. Windows drive-letter prefixes are
+  converted with Git `cygpath` before GNU tar `-C`.
   With no `--archive` it reads
   `liminal-ai/t3code-lhc` releases/latest and installs only if the asset version
   differs from the receipt: equality, never ordering. Old versions stay; rollback

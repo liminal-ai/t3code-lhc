@@ -22,7 +22,7 @@ make_fake_archive() {
   echo "<html></html>" > "$s/apps/server/dist/client/index.html"
   echo "export {};" > "$s/vendor/claude-lhc/dist/sidecar.js"
   (cd "$s" && tar -czf "$ASSETS/$name" manifest.json apps node_modules vendor)
-  (cd "$ASSETS" && sha256sum "$name" > "$name.sha256")
+  node -e 'const fs=require("fs");const crypto=require("crypto");const f=process.argv[1];const h=crypto.createHash("sha256").update(fs.readFileSync(f)).digest("hex");fs.writeFileSync(f+".sha256",h+"  "+require("path").basename(f)+"\n");' "$ASSETS/$name"
   echo "$ASSETS/$name"
 }
 
@@ -102,6 +102,36 @@ if [ -n "$REAL" ]; then
 else
   echo "9. (skipped: no dist-lhc archive built)"
 fi
+
+echo "10. checksum uses Node crypto when sha256sum is not on PATH"
+P10="$T/prefix-nosha"
+mkdir -p "$T/nosh"
+cat > "$T/nosh/sha256sum" <<'EOF'
+#!/bin/sh
+echo "sha256sum should not be called" >&2
+exit 127
+EOF
+chmod +x "$T/nosh/sha256sum"
+out="$(PATH="$T/nosh:$PATH" "$INSTALL" --prefix "$P10" --archive "$A")"
+check "installs without sha256sum" '[[ "$out" == *"installed 0.0.40"* ]]'
+check "current after node checksum" '[ "$(node "$HERE/lib/lhc-store.ts" read-current "$P10")" = "0.0.40" ]'
+
+echo "11. Windows-style prefix is converted with cygpath"
+P11="$T/win-prefix"
+mkdir -p "$T/cygpath-bin"
+cat > "$T/cygpath-bin/cygpath" <<EOF
+#!/bin/sh
+if [ "\$1" = "-u" ]; then
+  printf '%s\\n' "$P11"
+  exit 0
+fi
+exit 1
+EOF
+chmod +x "$T/cygpath-bin/cygpath"
+out="$(PATH="$T/cygpath-bin:$PATH" "$INSTALL" --prefix 'D:\a\_temp\t3code-lhc' --archive "$A")"
+check "installs into cygpath unix prefix" '[[ "$out" == *"installed 0.0.40"* ]]'
+check "current under converted prefix" '[ "$(node "$HERE/lib/lhc-store.ts" read-current "$P11")" = "0.0.40" ]'
+check "linux posix prefix still works" '[ "$(node "$HERE/lib/lhc-store.ts" read-current "$PREFIX")" = "0.0.40" ]'
 
 echo "passed $PASS, failed $FAIL"
 [ "$FAIL" = 0 ]

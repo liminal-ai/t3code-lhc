@@ -22,9 +22,12 @@
 #   receipt.json          { version, upstreamTag, prefix, name, source, sha256, installedAt, previous }
 #
 # Run this file with Git Bash (or another POSIX bash). PowerShell cannot execute
-# it. Versions are compared for equality only, never ordered (FORK.md). Node >= 24.3
-# and an authenticated Claude Code CLI are runtime prerequisites. Old versions
-# are never deleted. systemd is never touched.
+# it. `mv` of the extracted tree is portable (no GNU `mv -T`). Checksums use
+# Node crypto, not `sha256sum`. Windows prefixes with drive letters are converted
+# with Git `cygpath` before GNU tar `-C`. Versions are compared for equality
+# only, never ordered (FORK.md). Node >= 24.3 and an authenticated Claude Code
+# CLI are runtime prerequisites. Old versions are never deleted. systemd is
+# never touched.
 set -euo pipefail
 
 PREFIX="${HOME}/.local/share/t3code-lhc"
@@ -54,6 +57,22 @@ done
 command -v node >/dev/null 2>&1 || die "node is required (>= 24.3) and was not found on PATH"
 node -e 'const [maj, min] = process.versions.node.split(".").map(Number); if (!(maj > 24 || (maj === 24 && min >= 3))) process.exit(1)' \
   || die "node >= 24.3 is required, found $(node --version)"
+
+# Git GNU tar rejects Windows backslash prefixes at -C. Convert at the Bash
+# boundary; Linux/macOS paths are unchanged.
+to_unix_path() {
+  case "$1" in
+    [A-Za-z]:*|*\\*)
+      command -v cygpath >/dev/null 2>&1 || die "Windows path '$1' needs Git cygpath"
+      cygpath -u "$1"
+      ;;
+    *) printf '%s\n' "$1" ;;
+  esac
+}
+PREFIX="$(to_unix_path "$PREFIX")"
+if [ -n "$ARCHIVE" ]; then
+  ARCHIVE="$(to_unix_path "$ARCHIVE")"
+fi
 
 if [ -z "$PLATFORM" ]; then
   case "$(uname -s)" in
@@ -201,8 +220,17 @@ if [ -z "$ARCHIVE" ]; then
   curl -fsSL "$SUM_URL" -o "$WORK/$NAME.sha256" || die "download failed: $SUM_URL"
 fi
 
-(cd "$WORK" && sha256sum -c --quiet "$NAME.sha256") || die "sha256 mismatch for $NAME; refusing to install"
-SHA256="$(cut -d' ' -f1 "$WORK/$NAME.sha256")"
+SHA256="$(node -e '
+const fs = require("fs");
+const crypto = require("crypto");
+const file = process.argv[1];
+const sumFile = process.argv[2];
+const expected = fs.readFileSync(sumFile, "utf8").trim().split(/\s+/)[0].toLowerCase();
+if (!/^[0-9a-f]{64}$/.test(expected)) process.exit(2);
+const actual = crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+if (actual !== expected) process.exit(1);
+process.stdout.write(actual);
+' "$WORK/$NAME" "$WORK/$NAME.sha256")" || die "sha256 mismatch for $NAME; refusing to install"
 
 PARTIAL="$STORE/${VERSION:?}.partial"
 rm -rf "${PARTIAL:?}"
