@@ -6,20 +6,23 @@
 #   install-lhc.sh --use VERSION        # repoint `current` at an already installed version (rollback)
 #
 # Options: --prefix DIR (default ~/.local/share/t3code-lhc), --releases-url URL,
-#          --arch x64|arm64 (default: host), --force (replace an installed version dir).
+#          --arch x64|arm64 (default: host), --platform linux|darwin|win32 (default: host),
+#          --force (replace an installed version dir).
 #
 # Store layout under PREFIX:
 #   versions/<version>/   extracted archive (manifest.json, apps/server/dist, node_modules,
 #                         vendor/claude-lhc)
 #   current -> versions/<version>   swapped atomically, only after the extracted tree
 #                                   answers `--lhc-version` with the manifest's identity
-#   bin/t3code-lhc        launcher: sets CLAUDE_LHC_SIDECAR to current/vendor/claude-lhc
-#                         unless already set, then exec node current/apps/server/dist/bin.mjs
+#   bin/t3code-lhc        launcher: sets CLAUDE_LHC_SIDECAR to
+#                         current/vendor/claude-lhc/dist/sidecar.js unless already set,
+#                         then exec node current/apps/server/dist/bin.mjs
+#   bin/t3code-lhc.cmd    Windows server wrapper (same env, then node)
 #   receipt.json          { version, upstreamTag, prefix, name, source, sha256, installedAt, previous }
 #
-# Versions are compared for equality only, never ordered (FORK.md). Node >= 24, Bun
-# (>= 1.4, for the bundled claude-lhc launcher), and an authenticated Claude Code CLI
-# are runtime prerequisites. Old versions are never deleted. systemd is never touched.
+# Versions are compared for equality only, never ordered (FORK.md). Node >= 24.3
+# and an authenticated Claude Code CLI are runtime prerequisites. Old versions
+# are never deleted. systemd is never touched.
 set -euo pipefail
 
 PREFIX="${HOME}/.local/share/t3code-lhc"
@@ -27,7 +30,7 @@ RELEASES_URL="https://api.github.com/repos/liminal-ai/t3code-lhc/releases/latest
 ARCHIVE=""
 USE_VERSION=""
 FORCE=0
-PLATFORM=linux
+PLATFORM=""
 ARCH=""
 
 die() { echo "install-lhc: $*" >&2; exit 1; }
@@ -39,32 +42,47 @@ while [ $# -gt 0 ]; do
     --archive) ARCHIVE="$2"; shift 2 ;;
     --use) USE_VERSION="$2"; shift 2 ;;
     --arch) ARCH="$2"; shift 2 ;;
+    --platform) PLATFORM="$2"; shift 2 ;;
     --force) FORCE=1; shift ;;
     -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
 done
 
-command -v node >/dev/null 2>&1 || die "node is required (>= 24) and was not found on PATH"
-NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
-[ "$NODE_MAJOR" -ge 24 ] || die "node >= 24 is required, found $(node --version)"
-if ! command -v bun >/dev/null 2>&1 && [ ! -x "${HOME}/.bun/bin/bun" ] && [ -z "${CLAUDE_LHC_BUN:-}" ]; then
-  echo "install-lhc: warning: bun not found (PATH, ~/.bun/bin/bun, or CLAUDE_LHC_BUN); LHC threads need it to run the bundled sidecar" >&2
+command -v node >/dev/null 2>&1 || die "node is required (>= 24.3) and was not found on PATH"
+node -e 'const [maj, min] = process.versions.node.split(".").map(Number); if (!(maj > 24 || (maj === 24 && min >= 3))) process.exit(1)' \
+  || die "node >= 24.3 is required, found $(node --version)"
+
+if [ -z "$PLATFORM" ]; then
+  case "$(uname -s)" in
+    Linux) PLATFORM=linux ;;
+    Darwin) PLATFORM=darwin ;;
+    MINGW*|MSYS*|CYGWIN*|Windows_NT) PLATFORM=win32 ;;
+    *) die "unsupported host $(uname -s); pass --platform linux|darwin|win32" ;;
+  esac
 fi
+case "$PLATFORM" in
+  linux|darwin|win32) ;;
+  *) die "unsupported --platform $PLATFORM (linux, darwin, win32)" ;;
+esac
 
 if [ -z "$ARCH" ]; then
   case "$(uname -m)" in
-    x86_64) ARCH=x64 ;;
+    x86_64|amd64) ARCH=x64 ;;
     aarch64|arm64) ARCH=arm64 ;;
     *) die "unsupported host architecture $(uname -m); pass --arch" ;;
   esac
 fi
-[ "$(uname -s)" = Linux ] || die "only linux archives exist"
+case "$PLATFORM-$ARCH" in
+  linux-x64|darwin-arm64|win32-x64) ;;
+  *) die "no archive for $PLATFORM-$ARCH (supported: linux-x64, darwin-arm64, win32-x64)" ;;
+esac
 
 STORE="${PREFIX:?}/versions"
 CURRENT="$PREFIX/current"
 RECEIPT="$PREFIX/receipt.json"
 LAUNCHER="$PREFIX/bin/t3code-lhc"
+WIN_LAUNCHER="$PREFIX/bin/t3code-lhc.cmd"
 SUFFIX="-${PLATFORM}-${ARCH}.tar.gz"
 mkdir -p "$STORE" "$PREFIX/bin"
 
@@ -81,18 +99,26 @@ write_launcher() {
   cat > "$LAUNCHER.tmp" <<'EOF'
 #!/usr/bin/env bash
 # t3code-lhc launcher: runs the server from the store's `current` version.
-# Bundled claude-lhc is discovered here, not by the server bridge.
+# Bundled claude-lhc JS entry is discovered here, not by the server bridge.
 set -euo pipefail
 here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 root="$(cd "$here/.." && pwd)"
-bundled="$root/current/vendor/claude-lhc/bin/claude-lhc"
-if [ -z "${CLAUDE_LHC_SIDECAR:-}" ] && [ -x "$bundled" ]; then
+bundled="$root/current/vendor/claude-lhc/dist/sidecar.js"
+if [ -z "${CLAUDE_LHC_SIDECAR:-}" ] && [ -f "$bundled" ]; then
   export CLAUDE_LHC_SIDECAR="$bundled"
 fi
 exec node "$root/current/apps/server/dist/bin.mjs" "$@"
 EOF
   chmod +x "$LAUNCHER.tmp"
   mv -f "$LAUNCHER.tmp" "$LAUNCHER"
+  cat > "$WIN_LAUNCHER.tmp" <<'EOF'
+@echo off
+setlocal
+set "ROOT=%~dp0.."
+if not defined CLAUDE_LHC_SIDECAR if exist "%ROOT%\current\vendor\claude-lhc\dist\sidecar.js" set "CLAUDE_LHC_SIDECAR=%ROOT%\current\vendor\claude-lhc\dist\sidecar.js"
+node "%ROOT%\current\apps\server\dist\bin.mjs" %*
+EOF
+  mv -f "$WIN_LAUNCHER.tmp" "$WIN_LAUNCHER"
 }
 
 swap_current() { # $1 version

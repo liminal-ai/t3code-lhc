@@ -3,9 +3,10 @@
 // Build the LHC fork server archive: server dist (web client bundled at
 // dist/client by the server build) + the runtime dependency closure staged the
 // way the desktop sidecar stages its Linux half + manifest.json, packed as
-// t3code-lhc-<version>-linux-<arch>.tar.gz with a sha256 sidecar. Fork-owned.
+// t3code-lhc-<version>-<platform>-<arch>.tar.gz with a sha256 sidecar. Fork-owned.
 //
-//   node scripts/build-lhc-archive.ts [--skip-build] [--keep-stage] [--arch x64|arm64] [--out dist-lhc]
+//   node scripts/build-lhc-archive.ts [--skip-build] [--keep-stage]
+//     [--platform linux|darwin|win32] [--arch x64|arm64] [--out dist-lhc]
 //
 // The post-pack check extracts the archive to a temp dir and requires
 // `node apps/server/dist/bin.mjs --lhc-version` to print the identity line, so
@@ -36,10 +37,12 @@ import {
 } from "./build-desktop-artifact.ts";
 import {
   type ArchiveArch,
+  type ArchivePlatform,
   archiveExcludedPrefixes,
   archiveFileName,
   buildManifest,
   expectedLhcVersionLine,
+  isArchiveTarget,
   sha256Line,
   stageDependencies,
   tarArguments,
@@ -73,6 +76,7 @@ function parseArgs(argv: ReadonlyArray<string>) {
   const options = {
     skipBuild: false,
     keepStage: false,
+    platform: undefined as ArchivePlatform | undefined,
     arch: undefined as ArchiveArch | undefined,
     out: "dist-lhc",
   };
@@ -80,7 +84,13 @@ function parseArgs(argv: ReadonlyArray<string>) {
     const arg = argv[i];
     if (arg === "--skip-build") options.skipBuild = true;
     else if (arg === "--keep-stage") options.keepStage = true;
-    else if (arg === "--arch") {
+    else if (arg === "--platform") {
+      const value = argv[++i];
+      if (value !== "linux" && value !== "darwin" && value !== "win32") {
+        throw new Error(`--platform must be linux, darwin, or win32, got ${value}`);
+      }
+      options.platform = value;
+    } else if (arg === "--arch") {
       const value = argv[++i];
       if (value !== "x64" && value !== "arm64")
         throw new Error(`--arch must be x64 or arm64, got ${value}`);
@@ -89,6 +99,16 @@ function parseArgs(argv: ReadonlyArray<string>) {
     else throw new Error(`unknown argument ${arg}`);
   }
   return options;
+}
+
+/** LHC pin install: npm 11.16 works; 11.4.2 does not. Override with LHC_ARCHIVE_NPM. */
+function runNpm(args: ReadonlyArray<string>, cwd: string): string {
+  const cli = process.env.LHC_ARCHIVE_NPM?.trim();
+  if (cli !== undefined && cli !== "") {
+    if (cli.endsWith(".js")) return run(process.execPath, [cli, ...args], cwd);
+    return run(cli, args, cwd);
+  }
+  return run("npm", args, cwd);
 }
 
 function run(
@@ -165,7 +185,7 @@ function buildLhcDist(source: string, lhcPkg: NpmPackageJson, destDist: string):
     );
     writePackageJson(NodePath.join(work, "package.json"), lhcPkg);
     console.log("[lhc-archive] installing LHC package build dependencies...");
-    run("npm", ["install", "--no-fund", "--no-audit"], work);
+    runNpm(["install", "--no-fund", "--no-audit"], work);
     const tsc = NodePath.join(work, "node_modules", "typescript", "bin", "tsc");
     if (!NodeFS.existsSync(tsc)) {
       throw new Error("LHC package install did not provide typescript/bin/tsc");
@@ -198,24 +218,39 @@ function stageClaudeLhc(stage: string, pin: SidecarPin): SidecarProvenance {
     copyTree(
       NodePath.join(source, "packages/claude-lhc"),
       sidecarRoot,
-      new Set(["node_modules", "test", "scripts", "package.json"]),
+      new Set(["node_modules", "dist", "test", "scripts", "package.json"]),
     );
     writePackageJson(
       NodePath.join(sidecarRoot, "package.json"),
       packageJsonWithWorkspaceRewrites(claudePkg, { lhc: "file:./lhc" }),
     );
     NodeFS.writeFileSync(NodePath.join(sidecarRoot, ".npmrc"), SIDECAR_NPMRC);
-    const launcher = NodePath.join(sidecarRoot, "bin", "claude-lhc");
-    if (!NodeFS.existsSync(launcher)) throw new Error("claude-lhc launcher missing from LHC pin");
-    NodeFS.chmodSync(launcher, 0o755);
 
     console.log("[lhc-archive] installing claude-lhc JS dependency closure...");
-    run("npm", ["install", "--omit=dev", "--no-fund", "--no-audit"], sidecarRoot);
+    runNpm(["install", "--no-fund", "--no-audit"], sidecarRoot);
     removeBundledClaudeExecutables(NodePath.join(sidecarRoot, "node_modules"));
+
+    console.log("[lhc-archive] compiling claude-lhc dist/sidecar.js...");
+    const tsc = NodePath.join(sidecarRoot, "node_modules", "typescript", "bin", "tsc");
+    if (!NodeFS.existsSync(tsc)) {
+      throw new Error("claude-lhc install did not provide typescript/bin/tsc");
+    }
+    run(tsc, ["-p", "tsconfig.json"], sidecarRoot);
+    const entry = NodePath.join(sidecarRoot, "dist", "sidecar.js");
+    if (!NodeFS.existsSync(entry)) {
+      throw new Error("claude-lhc tsc produced no dist/sidecar.js");
+    }
+    runNpm(["prune", "--omit=dev", "--no-fund", "--no-audit"], sidecarRoot);
     return { repository: pin.repository, commit: pin.commit, claudeAgentSdk };
   } finally {
     NodeFS.rmSync(scratch, { recursive: true, force: true });
   }
+}
+
+function desktopPlatform(platform: ArchivePlatform): "linux" | "mac" | "win" {
+  if (platform === "linux") return "linux";
+  if (platform === "darwin") return "mac";
+  return "win";
 }
 
 function main() {
@@ -223,8 +258,13 @@ function main() {
   const [hostPlatform, hostArch] = Effect.runSync(
     Effect.all([HostProcessPlatform, HostProcessArchitecture]),
   );
-  if (hostPlatform !== "linux") throw new Error("the LHC archive is built on linux only");
+  const platform: ArchivePlatform =
+    options.platform ??
+    (hostPlatform === "darwin" || hostPlatform === "win32" ? hostPlatform : "linux");
   const arch: ArchiveArch = options.arch ?? (hostArch === "arm64" ? "arm64" : "x64");
+  if (isArchiveTarget(platform, arch) === undefined) {
+    throw new Error(`unsupported archive target ${platform}-${arch}`);
+  }
   const identity = { version: lhcVersion.version, upstreamTag: lhcVersion.upstreamTag };
   const vp = NodePath.join(repoRoot, "node_modules/.bin/vp");
 
@@ -253,7 +293,8 @@ function main() {
     serverDependencies: serverPackageJson.dependencies,
     catalog: workspace.catalog ?? {},
     arch,
-    linuxFffNativeDependencies: (a, version) => resolveFffNativeDependencies("linux", a, version),
+    fffNativeDependencies: (a, version) =>
+      resolveFffNativeDependencies(desktopPlatform(platform), a, version),
   });
   const patchedDependencies = createStagePatchedDependencies(
     workspace.patchedDependencies ?? {},
@@ -273,16 +314,17 @@ function main() {
     );
     NodeFS.writeFileSync(
       NodePath.join(stage, "pnpm-workspace.yaml"),
-      encodeYaml(
-        createStageWorkspaceConfig({
-          platform: "linux",
+      encodeYaml({
+        ...createStageWorkspaceConfig({
+          platform: desktopPlatform(platform),
           arch,
           allowBuilds: { ...workspace.allowBuilds },
           patchedDependencies,
           overrides,
-          linuxServerBackend: true,
+          linuxServerBackend: platform === "linux",
         }),
-      ),
+        nodeLinker: "hoisted" as const,
+      }),
     );
     if (Object.keys(patchedDependencies).length > 0) {
       NodeFS.cpSync(NodePath.join(repoRoot, "patches"), NodePath.join(stage, "patches"), {
@@ -301,7 +343,7 @@ function main() {
     const manifest = buildManifest({
       identity,
       commit,
-      platform: "linux",
+      platform,
       arch,
       nodeEngine: rootPackageJson.engines.node,
       sidecar,
@@ -313,7 +355,7 @@ function main() {
 
     const outDir = NodePath.resolve(repoRoot, options.out);
     NodeFS.mkdirSync(outDir, { recursive: true });
-    const name = archiveFileName({ version: identity.version, platform: "linux", arch });
+    const name = archiveFileName({ version: identity.version, platform, arch });
     const archivePath = NodePath.join(outDir, name);
     NodeFS.rmSync(archivePath, { force: true });
     console.log(`[lhc-archive] packing ${name}`);
@@ -321,7 +363,7 @@ function main() {
       "tar",
       tarArguments({
         archivePath,
-        excludedPrefixes: archiveExcludedPrefixes(WSL_RUNTIME_ARCHIVE_EXCLUDED_PREFIXES),
+        excludedPrefixes: archiveExcludedPrefixes(WSL_RUNTIME_ARCHIVE_EXCLUDED_PREFIXES, platform),
         mtimeEpochSeconds: commitTime,
       }),
       stage,
@@ -336,11 +378,21 @@ function main() {
     try {
       run("tar", ["-xzf", archivePath], probe);
       const expected = expectedLhcVersionLine(identity);
-      const printed = run("node", ["apps/server/dist/bin.mjs", "--lhc-version"], probe, {
-        NODE_OPTIONS: "",
-      }).trim();
-      if (printed !== expected)
-        throw new Error(`post-pack identity check failed: got "${printed}", want "${expected}"`);
+      const hostMatchesArchive =
+        (hostPlatform === "linux" && platform === "linux") ||
+        (hostPlatform === "darwin" && platform === "darwin") ||
+        (hostPlatform === "win32" && platform === "win32");
+      if (hostMatchesArchive) {
+        const printed = run("node", ["apps/server/dist/bin.mjs", "--lhc-version"], probe, {
+          NODE_OPTIONS: "",
+        }).trim();
+        if (printed !== expected)
+          throw new Error(`post-pack identity check failed: got "${printed}", want "${expected}"`);
+      } else {
+        console.log(
+          `[lhc-archive] skipping live --lhc-version on ${hostPlatform} for ${platform} archive`,
+        );
+      }
       if (!NodeFS.existsSync(NodePath.join(probe, "apps/server/dist/client/index.html"))) {
         throw new Error("post-pack check failed: web client missing from the archive");
       }
@@ -358,15 +410,18 @@ function main() {
       if (sidecarPkg.dependencies?.lhc !== "file:./lhc") {
         throw new Error("post-pack check failed: sidecar lhc is not file:./lhc");
       }
-      const optionalNative = NodePath.join(
+      const anthropic = NodePath.join(
         probe,
         LHC_SIDECAR_ARCHIVE_ROOT,
         "node_modules",
         "@anthropic-ai",
-        "claude-agent-sdk-linux-x64",
       );
-      if (NodeFS.existsSync(optionalNative)) {
-        throw new Error("post-pack check failed: optional SDK Claude binary was packed");
+      if (NodeFS.existsSync(anthropic)) {
+        for (const entry of NodeFS.readdirSync(anthropic)) {
+          if (isBundledClaudeExecutablePackage(entry)) {
+            throw new Error(`post-pack check failed: optional SDK Claude binary packed (${entry})`);
+          }
+        }
       }
     } finally {
       NodeFS.rmSync(probe, { recursive: true, force: true });

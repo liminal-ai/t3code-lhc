@@ -64,11 +64,13 @@ and trust.
 ## Archive, install, launcher (slice 4)
 
 - Build: `node scripts/build-lhc-archive.ts` (flags `--skip-build`, `--keep-stage`,
-  `--arch`, `--out`). Produces `dist-lhc/t3code-lhc-<version>-linux-<arch>.tar.gz`
-  plus `.sha256`; inside: `manifest.json`, `apps/server/dist` (web client at
-  `dist/client`, no source maps), `node_modules` (runtime externals staged like the
-  desktop sidecar's Linux half, pty.node compiled on the build host, glibc >= 2.34),
-  and `vendor/claude-lhc` (launcher, src, built `lhc` dist, JS closure from
+  `--platform linux|darwin|win32`, `--arch`, `--out`). Produces
+  `dist-lhc/t3code-lhc-<version>-<platform>-<arch>.tar.gz` plus `.sha256` for
+  linux-x64, darwin-arm64, and win32-x64; inside: `manifest.json`, `apps/server/dist`
+  (web client at `dist/client`, no source maps), `node_modules` (runtime externals
+  staged like the desktop sidecar, fff natives for the target, Linux pty.node
+  compiled on the Linux builder, Mac/Windows node-pty prebuilds), and
+  `vendor/claude-lhc` (compiled `dist/sidecar.js`, built `lhc` dist, JS closure from
   `lhc-release/sidecar.json`). Optional `@anthropic-ai/claude-agent-sdk-*`
   platform packages are not shipped: T3 passes `pathToClaudeCodeExecutable`.
   The script refuses to emit an archive whose extracted tree does not answer
@@ -84,8 +86,9 @@ and trust.
   differs from the receipt: equality, never ordering. Old versions stay; rollback
   is `--use <version>`. It never touches systemd. Tests: `scripts/install-lhc.test.sh`.
 - Launcher: `<prefix>/bin/t3code-lhc` sets `CLAUDE_LHC_SIDECAR` to
-  `current/vendor/claude-lhc/bin/claude-lhc` unless it is already set, then execs
-  `node current/apps/server/dist/bin.mjs`. The server bridge stays env-or-PATH.
+  `current/vendor/claude-lhc/dist/sidecar.js` unless it is already set, then execs
+  `node current/apps/server/dist/bin.mjs`. Windows also writes `t3code-lhc.cmd`
+  (server wrapper only). The server always `spawn(process.execPath, [entry])`.
   Activation on this box (not done yet): change the last line of
   `~/.t3code/run-server.sh` from `node /srv/work/t3code/apps/server/dist/bin.mjs ...`
   to `"$HOME/.local/share/t3code-lhc/bin/t3code-lhc" ...` with the same arguments and
@@ -110,21 +113,22 @@ so the UI's update path is inert.
 
 `lhc-release.yml` is dispatch only (a tag never triggers it).
 
-- Candidate: dispatch with `promote` unchecked. The run builds the archive on a
-  hosted runner, runs the two scripts tests, proves the archive on a clean host
-  (`scripts/lhc-clean-host-proof.sh`: identity, UI, packaged sidecar stdin-EOF
-  under Bun; same file locally), and uploads
-  `<name>.tar.gz`, `.sha256`, `.manifest.json` as one artifact (14 days).
+- Candidate: dispatch with `promote` unchecked. Native jobs build linux-x64,
+  darwin-arm64, and win32-x64, run the two scripts tests on Linux, prove the
+  Linux archive on a clean host (`scripts/lhc-clean-host-proof.sh`: identity, UI,
+  packaged sidecar stdin-EOF under Node; same file locally), and upload each
+  `<name>.tar.gz`, `.sha256`, `.manifest.json` (14 days).
 - Qualification: those jobs green, plus the local gate on the same artifact:
   install into a scratch prefix and port with the live sidecar, the campaign's
   13-step smoke against it (tool turns, manual compact, restart, resume), one
   stock desktop client against that port. Recorded in the campaign evidence.
 - Promote: dispatch with `promote` checked from the qualified commit. The run
-  rebuilds, re-qualifies, verifies the manifest commit equals the run's SHA,
-  creates the annotated tag `lhc-v<version>` at that SHA, and creates the GitHub
-  release from those exact bytes with `--latest`. A tag exists only for a
-  promoted build. An existing tag or release fails the run: never re-promote,
-  publish `<upstream>-lhc.N+1`. Releases are never deleted or moved.
+  downloads the already-tested native artifacts (it does not rebuild), verifies
+  each manifest commit equals the run's SHA, creates the annotated tag
+  `lhc-v<version>` at that SHA, and creates the GitHub release from those exact
+  bytes with `--latest`. A tag exists only for a promoted build. An existing tag
+  or release fails the run: never re-promote, publish `<upstream>-lhc.N+1`.
+  Releases are never deleted or moved.
 - Public check: a fresh runner runs `scripts/install-lhc.sh` with no `--archive`
   against releases/latest, requires the launcher to print the promoted identity,
   and requires a second run to no-op ("already at").
@@ -138,9 +142,12 @@ fork is installed from `liminal-ai/t3code-lhc` releases only.
 
 ## Prerequisites (declared, not bundled)
 
-Node 24, Bun >= 1.4 (the bundled `claude-lhc` launcher runs `bun run src/sidecar.ts`),
-an authenticated Claude Code CLI, and provider CLIs for Codex/Grok when those
-providers are enabled. The sidecar itself is in the archive; a source checkout of
-long-horizon-context is not required. `CLAUDE_LHC_SIDECAR` still overrides the
-bundled path. The archive builder clones `lhc-release/sidecar.json`'s commit;
-it does not copy a developer working tree.
+Node >= 24.3 (qualified 24.3; Linux also regresses on operational 24.18) and an
+authenticated Claude Code CLI, plus provider CLIs for Codex/Grok when those
+providers are enabled. The sidecar itself is in the archive as compiled JS; a
+source checkout of long-horizon-context is not required. `CLAUDE_LHC_SIDECAR`
+overrides the bundled JS entry. The archive builder clones
+`lhc-release/sidecar.json`'s commit; it does not copy a developer working tree.
+Source-build recipe: Node 24.3, npm 11.16 for the LHC pin install (npm 11.4.2
+breaks that install), then `node scripts/build-lhc-archive.ts`. Do not lower
+third-party `engines` blindly.

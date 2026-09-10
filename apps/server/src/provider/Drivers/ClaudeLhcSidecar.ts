@@ -3,7 +3,7 @@
  * ClaudeLhcSidecar — the `createQuery` seam for LHC-backed Claude instances.
  *
  * Instead of calling the Claude Agent SDK in-process, an LHC instance spawns the
- * `claude-lhc` sidecar (a bun process from the LHC workspace) and speaks its JSONL
+ * `claude-lhc` sidecar (Node, compiled JS) and speaks its JSONL
  * protocol over stdio. The sidecar runs the same SDK against the same binary,
  * records every message into LHC, and forwards the native `SDKMessage` stream
  * unchanged, so the adapter's parsing, approvals, and usage meter work as they
@@ -16,9 +16,9 @@
  *   sidecar → adapter: `msg` (SDKMessage), `req` (canUseTool / onUserDialog),
  *     `res`, `abort` (the SDK aborted its own request), `error` (fatal).
  *
- * Sidecar location: `CLAUDE_LHC_SIDECAR` (path to the launcher), else `claude-lhc`
- * on PATH. The sidecar keeps its LHC state under `T3CODE_LHC_HOME`, inherited
- * from the server's environment.
+ * Sidecar location: `CLAUDE_LHC_SIDECAR` is the Node JS entry file. The server
+ * always `spawn(process.execPath, [entry], { windowsHide: true })`. There is no
+ * PATH fallback and no Bun launcher. LHC state is under `T3CODE_LHC_HOME`.
  *
  * @module provider/Drivers/ClaudeLhcSidecar
  */
@@ -73,7 +73,10 @@ const NON_WIRE_OPTIONS = new Set([
 
 export function resolveClaudeLhcSidecarPath(environment: NodeJS.ProcessEnv): string {
   const configured = environment.CLAUDE_LHC_SIDECAR?.trim();
-  return configured !== undefined && configured !== "" ? configured : "claude-lhc";
+  if (configured === undefined || configured === "") {
+    throw new Error("CLAUDE_LHC_SIDECAR must be set to the compiled claude-lhc JS entry");
+  }
+  return configured;
 }
 
 function toWireOptions(options: ClaudeQueryOptions): Record<string, unknown> {
@@ -155,9 +158,10 @@ function startSidecarQuery(
   const childEnv: NodeJS.ProcessEnv = { ...sidecar.environment, ...(input.options.env ?? {}) };
   let child: NodeChildProcess.ChildProcess;
   try {
-    child = NodeChildProcess.spawn(sidecarPath, [], {
+    child = NodeChildProcess.spawn(process.execPath, [sidecarPath], {
       stdio: ["pipe", "pipe", "pipe"],
       env: childEnv,
+      windowsHide: true,
     });
   } catch (cause) {
     throw new Error(

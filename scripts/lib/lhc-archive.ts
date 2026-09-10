@@ -10,8 +10,21 @@ import {
 } from "./lhc-sidecar-stage.ts";
 import { resolveCatalogDependencies } from "./resolve-catalog.ts";
 
-export type ArchivePlatform = "linux";
+export type ArchivePlatform = "linux" | "darwin" | "win32";
 export type ArchiveArch = "x64" | "arm64";
+
+export const ARCHIVE_TARGETS = [
+  { platform: "linux", arch: "x64" },
+  { platform: "darwin", arch: "arm64" },
+  { platform: "win32", arch: "x64" },
+] as const satisfies ReadonlyArray<{ platform: ArchivePlatform; arch: ArchiveArch }>;
+
+export function isArchiveTarget(
+  platform: string,
+  arch: string,
+): { platform: ArchivePlatform; arch: ArchiveArch } | undefined {
+  return ARCHIVE_TARGETS.find((target) => target.platform === platform && target.arch === arch);
+}
 
 export const ARCHIVE_ROOTS = [
   "manifest.json",
@@ -95,17 +108,14 @@ export function buildManifest(input: {
 
 /**
  * The runtime dependency closure to stage: the server's runtime-external
- * packages (catalog specs resolved) plus the Linux fff native binaries, the
- * same selection the desktop sidecar staging makes for its Linux half.
+ * packages (catalog specs resolved) plus the target platform's fff native
+ * binaries, the same selection the desktop sidecar staging makes.
  */
 export function stageDependencies(input: {
   readonly serverDependencies: Readonly<Record<string, string>>;
   readonly catalog: Readonly<Record<string, string>>;
   readonly arch: ArchiveArch;
-  readonly linuxFffNativeDependencies: (
-    arch: ArchiveArch,
-    version: string,
-  ) => Record<string, string>;
+  readonly fffNativeDependencies: (arch: ArchiveArch, version: string) => Record<string, string>;
 }): Record<string, string> {
   const resolved = resolveCatalogDependencies(
     { ...input.serverDependencies },
@@ -117,30 +127,45 @@ export function stageDependencies(input: {
   if (fffVersion === undefined) {
     throw new Error("apps/server/package.json has no @ff-labs/fff-node dependency");
   }
-  return { ...runtimeExternals, ...input.linuxFffNativeDependencies(input.arch, fffVersion) };
+  return { ...runtimeExternals, ...input.fffNativeDependencies(input.arch, fffVersion) };
 }
 
 /** Source maps are never shipped; everything else follows the shared WSL list. */
 export const ARCHIVE_EXTRA_EXCLUDES = ["*.map"] as const;
 
 /**
- * The shared WSL list drops `node-pty/build` because that archive ships a
- * separately staged prebuild. This archive has no prebuild step: the stage
- * install compiles pty.node into build/Release, so keep that and drop only the
- * compiler intermediates beside it.
+ * Linux compiles pty.node into build/Release. macOS/Windows keep the published
+ * node-pty prebuilds (and Windows conpty). Shared WSL exclusions drop the
+ * other platforms' natives.
  */
-export function archiveExcludedPrefixes(shared: ReadonlyArray<string>): ReadonlyArray<string> {
-  return [
-    ...shared.filter((prefix) => prefix !== "node_modules/node-pty/build"),
-    "node_modules/node-pty/build/Release/obj",
-    "node_modules/node-pty/build/Release/.deps",
-    "node_modules/node-pty/build/Makefile",
-    "node_modules/node-pty/build/binding.Makefile",
-    "node_modules/node-pty/build/config.gypi",
-    "node_modules/node-pty/build/deps",
-    "node_modules/node-pty/build/node_gyp_bins",
-    SIDECAR_OPTIONAL_SDK_EXCLUDE_PREFIX,
-  ];
+export function archiveExcludedPrefixes(
+  shared: ReadonlyArray<string>,
+  platform: ArchivePlatform = "linux",
+): ReadonlyArray<string> {
+  const keep =
+    platform === "linux"
+      ? new Set(["node_modules/node-pty/build"])
+      : platform === "darwin"
+        ? new Set(["node_modules/node-pty/prebuilds/darwin-"])
+        : new Set([
+            "node_modules/node-pty/prebuilds/win32-",
+            "node_modules/node-pty/third_party/conpty",
+            "node_modules/@msgpackr-extract/msgpackr-extract-win32-",
+          ]);
+  const prefixes = shared.filter((prefix) => !keep.has(prefix));
+  if (platform === "linux") {
+    prefixes.push(
+      "node_modules/node-pty/build/Release/obj",
+      "node_modules/node-pty/build/Release/.deps",
+      "node_modules/node-pty/build/Makefile",
+      "node_modules/node-pty/build/binding.Makefile",
+      "node_modules/node-pty/build/config.gypi",
+      "node_modules/node-pty/build/deps",
+      "node_modules/node-pty/build/node_gyp_bins",
+    );
+  }
+  prefixes.push(SIDECAR_OPTIONAL_SDK_EXCLUDE_PREFIX);
+  return prefixes;
 }
 
 /**

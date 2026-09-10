@@ -5,9 +5,9 @@ for one account; [provider setup](./install.md#providers) covers installation an
 shared provider settings.
 
 A Claude instance can enable **Long-horizon context (LHC)**. That routes the
-thread through the bundled `claude-lhc` sidecar (Bun, plus an authenticated
-`claude` on PATH). Leave LHC off for stock Claude Code. `CLAUDE_LHC_SIDECAR`
-overrides the bundled launcher if you need to.
+thread through the bundled `claude-lhc` sidecar (Node JS entry, plus an
+authenticated `claude` on PATH). Leave LHC off for stock Claude Code.
+`CLAUDE_LHC_SIDECAR` overrides the bundled JS entry if you need to.
 
 ## Separate accounts or configurations
 

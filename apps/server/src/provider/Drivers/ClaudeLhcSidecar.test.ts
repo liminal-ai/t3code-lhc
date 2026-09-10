@@ -39,19 +39,15 @@ function makeFakeSidecar(): string {
   const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "claude-lhc-fake-"));
   const script = NodePath.join(dir, "sidecar.cjs");
   NodeFS.writeFileSync(script, FAKE_SIDECAR);
-  const launcher = NodePath.join(dir, "claude-lhc");
-  NodeFS.writeFileSync(launcher, `#!/bin/sh\nexec "${process.execPath}" "${script}"\n`, {
-    mode: 0o755,
-  });
-  return launcher;
+  return script;
 }
 
 describe("ClaudeLhcSidecar", () => {
-  it("resolves the launcher from CLAUDE_LHC_SIDECAR, else the bare command", () => {
-    expect(resolveClaudeLhcSidecarPath({ CLAUDE_LHC_SIDECAR: " /x/claude-lhc " })).toBe(
-      "/x/claude-lhc",
+  it("resolves CLAUDE_LHC_SIDECAR as the JS entry and requires it", () => {
+    expect(resolveClaudeLhcSidecarPath({ CLAUDE_LHC_SIDECAR: " /x/sidecar.js " })).toBe(
+      "/x/sidecar.js",
     );
-    expect(resolveClaudeLhcSidecarPath({})).toBe("claude-lhc");
+    expect(() => resolveClaudeLhcSidecarPath({})).toThrow(/CLAUDE_LHC_SIDECAR/);
   });
 
   it("bridges prompts, messages, approvals and controls over stdio and ends the stream on close", async () => {

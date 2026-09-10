@@ -4,7 +4,7 @@
 // scripts/build-lhc-archive.ts.
 
 export const LHC_SIDECAR_ARCHIVE_ROOT = "vendor/claude-lhc";
-export const LHC_SIDECAR_LAUNCHER = `${LHC_SIDECAR_ARCHIVE_ROOT}/bin/claude-lhc`;
+export const LHC_SIDECAR_LAUNCHER = `${LHC_SIDECAR_ARCHIVE_ROOT}/dist/sidecar.js`;
 
 export interface SidecarPin {
   readonly repository: string;

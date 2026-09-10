@@ -14,10 +14,16 @@ import {
 
 describe("lhc-archive", () => {
   it("names the archive for version, platform and arch, and parses it back", () => {
-    const name = archiveFileName({ version: "0.0.40-lhc.2", platform: "linux", arch: "x64" });
-    expect(name).toBe("t3code-lhc-0.0.40-lhc.2-linux-x64.tar.gz");
-    expect(archiveVersionFromFileName(name, "linux", "x64")).toBe("0.0.40-lhc.2");
+    const name = archiveFileName({ version: "0.0.40-lhc.3", platform: "linux", arch: "x64" });
+    expect(name).toBe("t3code-lhc-0.0.40-lhc.3-linux-x64.tar.gz");
+    expect(archiveVersionFromFileName(name, "linux", "x64")).toBe("0.0.40-lhc.3");
     expect(archiveVersionFromFileName(name, "linux", "arm64")).toBeNull();
+    expect(archiveFileName({ version: "0.0.40-lhc.3", platform: "darwin", arch: "arm64" })).toBe(
+      "t3code-lhc-0.0.40-lhc.3-darwin-arm64.tar.gz",
+    );
+    expect(archiveFileName({ version: "0.0.40-lhc.3", platform: "win32", arch: "x64" })).toBe(
+      "t3code-lhc-0.0.40-lhc.3-win32-x64.tar.gz",
+    );
     expect(archiveVersionFromFileName("t3code-lhc--linux-x64.tar.gz", "linux", "x64")).toBeNull();
     expect(archiveVersionFromFileName("t3-0.0.40-linux-x64.tar.gz", "linux", "x64")).toBeNull();
   });
@@ -31,11 +37,11 @@ describe("lhc-archive", () => {
   it("builds a manifest carrying identity, commit, target, roots and sidecar pin", () => {
     const sidecar = {
       repository: "https://github.com/liminal-ai/long-horizon-context.git",
-      commit: "8e4c3e4039e05d5b6d511b21839201140f9c49df",
+      commit: "1ba4cee9768514aa7358e8dba5f69b5c108dcdae",
       claudeAgentSdk: "0.3.170",
     };
     const manifest = buildManifest({
-      identity: { version: "0.0.40-lhc.2", upstreamTag: "v0.0.40" },
+      identity: { version: "0.0.40-lhc.3", upstreamTag: "v0.0.40" },
       commit: "bd6f0161f",
       platform: "linux",
       arch: "x64",
@@ -43,8 +49,8 @@ describe("lhc-archive", () => {
       sidecar,
     });
     expect(manifest).toEqual({
-      name: "t3code-lhc-0.0.40-lhc.2-linux-x64.tar.gz",
-      version: "0.0.40-lhc.2",
+      name: "t3code-lhc-0.0.40-lhc.3-linux-x64.tar.gz",
+      version: "0.0.40-lhc.3",
       upstreamTag: "v0.0.40",
       commit: "bd6f0161f",
       platform: "linux",
@@ -67,7 +73,7 @@ describe("lhc-archive", () => {
       },
       catalog: { "@ff-labs/fff-node": "0.9.4", effect: "4.0.0" },
       arch: "x64",
-      linuxFffNativeDependencies: (arch, version) => ({
+      fffNativeDependencies: (arch, version) => ({
         [`@ff-labs/fff-bin-linux-${arch}-gnu`]: version,
       }),
     });
@@ -82,7 +88,7 @@ describe("lhc-archive", () => {
         serverDependencies: { "node-pty": "^1.1.0" },
         catalog: {},
         arch: "x64",
-        linuxFffNativeDependencies: () => ({}),
+        fffNativeDependencies: () => ({}),
       }),
     ).toThrow(/fff-node/);
   });
@@ -161,12 +167,18 @@ describe("archiveExcludedPrefixes", () => {
       "node_modules/node-pty/build",
       "node_modules/node-pty/prebuilds/win32-",
     ];
-    const result = archiveExcludedPrefixes(shared);
+    const result = archiveExcludedPrefixes(shared, "linux");
     expect(result).not.toContain("node_modules/node-pty/build");
     expect(result).toContain("node_modules/.pnpm");
     expect(result).toContain("node_modules/node-pty/prebuilds/win32-");
     expect(result).toContain("node_modules/node-pty/build/Release/obj");
     expect(result).toContain("vendor/claude-lhc/node_modules/@anthropic-ai/claude-agent-sdk-");
+    const darwin = archiveExcludedPrefixes(shared, "darwin");
+    expect(darwin).toContain("node_modules/node-pty/build");
+    expect(darwin).not.toContain("node_modules/node-pty/prebuilds/darwin-");
+    const win = archiveExcludedPrefixes(shared, "win32");
+    expect(win).not.toContain("node_modules/node-pty/prebuilds/win32-");
+    expect(win).not.toContain("node_modules/node-pty/third_party/conpty");
     expect(
       result.every((prefix) => !"node_modules/node-pty/build/Release/pty.node".startsWith(prefix)),
     ).toBe(true);

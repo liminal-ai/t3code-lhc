@@ -3,7 +3,7 @@
 # no pnpm, no repo, and no ancestor node_modules, then require the sha256 to
 # match, `--lhc-version` to equal the manifest identity, the server to serve the
 # web UI, the environment descriptor to carry the same lhcFork identity, and the
-# packaged claude-lhc launcher to import under Bun (stdin EOF; no model auth).
+# packaged claude-lhc JS entry to import under Node (stdin EOF; no model auth).
 # Same file runs locally and in lhc-release.yml.
 #
 #   scripts/lhc-clean-host-proof.sh <archive.tar.gz> [--image node:24-bookworm-slim]
@@ -57,15 +57,9 @@ const base = \"http://127.0.0.1:3199\";
 })().catch((e) => { console.error(String(e)); process.exit(1); });
 " || { tail -20 /tmp/server.log; kill $PID; exit 1; }
 kill $PID
-echo "installing bun (documented prerequisite; not bundled)"
-apt-get update -qq
-apt-get install -y -qq curl unzip ca-certificates >/dev/null
-curl -fsSL https://bun.sh/install | bash
-export PATH="/tmp/.bun/bin:${PATH}"
-bun --version
-test -x /tmp/x/vendor/claude-lhc/bin/claude-lhc
+test -f /tmp/x/vendor/claude-lhc/dist/sidecar.js
 mkdir -p /tmp/lhc
-T3CODE_LHC_HOME=/tmp/lhc /tmp/x/vendor/claude-lhc/bin/claude-lhc </dev/null
+T3CODE_LHC_HOME=/tmp/lhc node /tmp/x/vendor/claude-lhc/dist/sidecar.js </dev/null
 echo "sidecar stdin-eof: PASS"
 echo "clean-host proof: PASS"
 '
