@@ -83,7 +83,7 @@ and trust.
   in the manifest, tar mtimes pinned to the commit time, `gzip -n`).
 - Install or update: `scripts/install-lhc.sh [--archive FILE | --use VERSION]`.
   Store at `~/.local/share/t3code-lhc`: `versions/<version>/`, `current` (POSIX
-  symlink, or a Windows directory junction via `scripts/lib/lhc-store.mjs`; Git
+  symlink, or a Windows directory junction via `scripts/lib/lhc-store.ts`; Git
   Bash `ln -s` copies and is not used), `bin/t3code-lhc` launcher,
   `receipt.json` (version, upstreamTag, prefix, name, source, sha256,
   installedAt, previous). Run `scripts/install-lhc.sh` from Git Bash on Windows

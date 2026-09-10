@@ -215,7 +215,7 @@ jobs:
             env -u CLAUDE_LHC_SIDECAR \
             node "$prefix/current/vendor/claude-lhc/dist/sidecar.js" </dev/null
           echo "sidecar stdin-eof: PASS"
-          current="$(node scripts/lib/lhc-store.mjs read-current "$prefix")"
+          current="$(node scripts/lib/lhc-store.ts read-current "$prefix")"
           [ "$current" = "$version" ] || { echo "current $current is not $version"; exit 1; }
           if [ "${{ matrix.platform }}" = "darwin" ]; then
             helper="$prefix/current/node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper"

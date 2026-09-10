@@ -1,10 +1,11 @@
+// @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import { describe, expect, it } from "@effect/vitest";
 
-import { currentLinkTarget, readCurrentVersion, swapCurrent } from "./lhc-store.mjs";
+import { currentLinkTarget, readCurrentVersion, swapCurrent } from "./lhc-store.ts";
 
 describe("lhc-store", () => {
   it("names the relative current target as versions/<version>", () => {

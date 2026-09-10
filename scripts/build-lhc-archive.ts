@@ -156,12 +156,12 @@ function gnuTarPath(): string {
 
 function withGnuTarPath(env?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const tarDir = gnuTarPath();
-  const pathKey = process.platform === "win32" ? "Path" : "PATH";
-  const current = env?.[pathKey] ?? env?.PATH ?? process.env[pathKey] ?? process.env.PATH ?? "";
+  const current = env?.PATH ?? env?.Path ?? process.env.PATH ?? process.env.Path ?? "";
+  const prefixed = `${tarDir}${NodePath.delimiter}${current}`;
   return {
     ...env,
-    PATH: `${tarDir}${NodePath.delimiter}${current}`,
-    Path: `${tarDir}${NodePath.delimiter}${current}`,
+    PATH: prefixed,
+    Path: prefixed,
   };
 }
 

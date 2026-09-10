@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off
 // Pure helpers for bundling claude-lhc into the T3 LHC archive.
 // Dependency versions come from the recorded LHC pin's package.json files;
 // this module only rewrites workspace: protocol refs. IO lives in

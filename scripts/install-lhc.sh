@@ -86,7 +86,7 @@ RECEIPT="$PREFIX/receipt.json"
 LAUNCHER="$PREFIX/bin/t3code-lhc"
 WIN_LAUNCHER="$PREFIX/bin/t3code-lhc.cmd"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-STORE_HELPER="$HERE/lib/lhc-store.mjs"
+STORE_HELPER="$HERE/lib/lhc-store.ts"
 SUFFIX="-${PLATFORM}-${ARCH}.tar.gz"
 mkdir -p "$STORE" "$PREFIX/bin"
 
