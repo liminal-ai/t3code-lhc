@@ -193,6 +193,14 @@ describe("lhc-archive", () => {
         "/tmp/x",
       ),
     ).toBe(false);
+    const macLexical = "/var/folders/16/T/lhc-containment/vendor/claude-lhc/node_modules/lhc";
+    const macCanonical =
+      "/private/var/folders/16/T/lhc-containment/vendor/claude-lhc/node_modules/lhc";
+    const macRoot = "/var/folders/16/T/lhc-containment";
+    const macRootCanonical = "/private/var/folders/16/T/lhc-containment";
+    expect(packedLhcResolvesInsideArchive(macCanonical, macRoot)).toBe(false);
+    expect(packedLhcResolvesInsideArchive(macCanonical, macRootCanonical)).toBe(true);
+    expect(packedLhcResolvesInsideArchive(macLexical, macRoot)).toBe(true);
   });
 
   it("writes sha256sum-compatible lines", () => {

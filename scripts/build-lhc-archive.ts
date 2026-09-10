@@ -294,10 +294,6 @@ function materializePackedLhc(sidecarRoot: string): void {
   if (NodeFS.lstatSync(packed).isSymbolicLink()) {
     throw new Error("materializePackedLhc left node_modules/lhc as a symlink");
   }
-  const archiveRoot = NodePath.dirname(NodePath.dirname(sidecarRoot));
-  if (!packedLhcResolvesInsideArchive(NodeFS.realpathSync(packed), archiveRoot)) {
-    throw new Error("materializePackedLhc left node_modules/lhc outside the archive");
-  }
 }
 
 function removeBundledClaudeExecutables(nodeModulesDir: string): void {
@@ -595,14 +591,9 @@ function main() {
         throw new Error("post-pack check failed: sidecar lhc is not file:./lhc");
       }
       const packedLhc = NodePath.join(probe, LHC_SIDECAR_ARCHIVE_ROOT, "node_modules", "lhc");
-      let packedLhcReal = packedLhc;
-      try {
-        packedLhcReal = NodeFS.realpathSync(packedLhc);
-      } catch {
-        const link = NodeFS.readlinkSync(packedLhc);
-        packedLhcReal = NodePath.resolve(NodePath.dirname(packedLhc), link);
-      }
-      if (!packedLhcResolvesInsideArchive(packedLhcReal, probe)) {
+      const packedLhcReal = NodeFS.realpathSync(packedLhc);
+      const probeReal = NodeFS.realpathSync(probe);
+      if (!packedLhcResolvesInsideArchive(packedLhcReal, probeReal)) {
         throw new Error(
           `post-pack check failed: node_modules/lhc resolves outside the archive (${packedLhcReal})`,
         );
