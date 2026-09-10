@@ -56,14 +56,15 @@ cat > "$T/latest.json" <<EOF
  {"name":"t3code-lhc-0.0.41-lhc.1-linux-x64.tar.gz","browser_download_url":"file://$B"},
  {"name":"t3code-lhc-0.0.41-lhc.1-linux-x64.tar.gz.sha256","browser_download_url":"file://$B.sha256"}]}
 EOF
-"$INSTALL" --prefix "$PREFIX" --releases-url "file://$T/latest.json" >/dev/null
+out="$(env -u GITHUB_TOKEN "$INSTALL" --prefix "$PREFIX" --releases-url "file://$T/latest.json")"
+check "http path with GITHUB_TOKEN absent" '[[ "$out" == *"installed 0.0.41-lhc.1"* ]]'
 check "current -> versions/0.0.41-lhc.1" '[ "$(node "$HERE/lib/lhc-store.ts" read-current "$PREFIX")" = "0.0.41-lhc.1" ]'
 check "old version kept" '[ -d "$PREFIX/versions/0.0.40" ]'
 check "receipt previous=0.0.40, source is the url" 'node -e "const r=require(process.argv[1]);process.exit(r.previous===\"0.0.40\"&&r.version===\"0.0.41-lhc.1\"&&r.source.startsWith(\"file://\")?0:1)" "$PREFIX/receipt.json"'
 check "launcher follows current" '[ "$("$PREFIX/bin/t3code-lhc" --lhc-version)" = "t3code-lhc 0.0.41-lhc.1 (upstream v0.0.41)" ]'
 
 echo "4. updater with the same version as the receipt does nothing (no download)"
-out="$("$INSTALL" --prefix "$PREFIX" --releases-url "file://$T/latest.json")"
+out="$(env -u GITHUB_TOKEN "$INSTALL" --prefix "$PREFIX" --releases-url "file://$T/latest.json")"
 check "says already at" '[[ "$out" == *"already at 0.0.41-lhc.1"* ]]'
 
 echo "5. corrupted checksum refuses before extraction"

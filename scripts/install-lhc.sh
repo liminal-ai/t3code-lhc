@@ -184,9 +184,15 @@ else
   echo "install-lhc: reading $RELEASES_URL"
   # GITHUB_TOKEN, when set, only authenticates the releases JSON read (hosted
   # runners share an anonymous rate limit); asset downloads stay anonymous.
-  auth=()
-  [ -n "${GITHUB_TOKEN:-}" ] && auth=(-H "Authorization: Bearer $GITHUB_TOKEN")
-  curl -fsSL "${auth[@]}" "$RELEASES_URL" -o "$WORK/release.json" || die "could not read releases JSON at $RELEASES_URL"
+  # Do not expand an empty array here: Bash 3.2 `set -u` treats that as unbound
+  # (macOS /bin/bash).
+  if [ -n "${GITHUB_TOKEN:-}" ]; then
+    curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" "$RELEASES_URL" -o "$WORK/release.json" \
+      || die "could not read releases JSON at $RELEASES_URL"
+  else
+    curl -fsSL "$RELEASES_URL" -o "$WORK/release.json" \
+      || die "could not read releases JSON at $RELEASES_URL"
+  fi
   NAME="$(node -e '
 const rel = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
 const suffix = process.argv[2];
