@@ -8,6 +8,9 @@
 //   node scripts/build-lhc-archive.ts [--skip-build] [--keep-stage]
 //     [--platform linux|darwin|win32] [--arch x64|arm64] [--out dist-lhc]
 //
+// Requires GNU tar (LHC_ARCHIVE_TAR) and npm 11.16 (LHC_ARCHIVE_NPM = npm-cli.js).
+// tsc is process.execPath + the pin's typescript/bin/tsc; no shebang, no host tsc.
+//
 // The post-pack check extracts the archive to a temp dir and requires
 // `node apps/server/dist/bin.mjs --lhc-version` to print the identity line, so
 // an archive that lost the JSON import in packing never leaves this script.
@@ -43,6 +46,7 @@ import {
   buildManifest,
   expectedLhcVersionLine,
   isArchiveTarget,
+  isGnuTarVersion,
   sha256Line,
   stageDependencies,
   tarArguments,
@@ -103,12 +107,66 @@ function parseArgs(argv: ReadonlyArray<string>) {
 
 /** LHC pin install: npm 11.16 works; 11.4.2 does not. Override with LHC_ARCHIVE_NPM. */
 function runNpm(args: ReadonlyArray<string>, cwd: string): string {
-  const cli = process.env.LHC_ARCHIVE_NPM?.trim();
-  if (cli !== undefined && cli !== "") {
-    if (cli.endsWith(".js")) return run(process.execPath, [cli, ...args], cwd);
-    return run(cli, args, cwd);
+  const override = process.env.LHC_ARCHIVE_NPM?.trim();
+  if (override !== undefined && override !== "") {
+    return runNodeCli(override, args, cwd);
   }
-  return run("npm", args, cwd);
+  const bundled = [
+    NodePath.join(NodePath.dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js"),
+    NodePath.join(
+      NodePath.dirname(process.execPath),
+      "..",
+      "lib",
+      "node_modules",
+      "npm",
+      "bin",
+      "npm-cli.js",
+    ),
+  ].find((candidate) => NodeFS.existsSync(candidate));
+  if (bundled !== undefined) return run(process.execPath, [bundled, ...args], cwd);
+  throw new Error(
+    "npm-cli.js not found next to process.execPath; set LHC_ARCHIVE_NPM to npm-cli.js (npm 11.16; 11.4.2 breaks the LHC pin install)",
+  );
+}
+
+function runNodeCli(cli: string, args: ReadonlyArray<string>, cwd: string): string {
+  if (cli.endsWith(".js") || cli.endsWith(".cjs") || cli.endsWith(".mjs")) {
+    return run(process.execPath, [cli, ...args], cwd);
+  }
+  throw new Error(`LHC_ARCHIVE_NPM must be a Node .js CLI, got ${cli}`);
+}
+
+function runTsc(tscFile: string, args: ReadonlyArray<string>, cwd: string): string {
+  if (!NodeFS.existsSync(tscFile)) throw new Error(`tsc not found at ${tscFile}`);
+  return run(process.execPath, [tscFile, ...args], cwd);
+}
+
+function resolveGnuTar(): string {
+  const override = process.env.LHC_ARCHIVE_TAR?.trim();
+  const candidates = [
+    ...(override ? [override] : []),
+    "gtar",
+    "tar",
+    "C:\\Program Files\\Git\\usr\\bin\\tar.exe",
+    "/usr/bin/gtar",
+    "/opt/homebrew/opt/gnu-tar/libexec/gnubin/tar",
+    "/usr/local/opt/gnu-tar/libexec/gnubin/tar",
+  ];
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    if (seen.has(candidate)) continue;
+    seen.add(candidate);
+    const probe = NodeChildProcess.spawnSync(candidate, ["--version"], { encoding: "utf8" });
+    const text = `${probe.stdout ?? ""}\n${probe.stderr ?? ""}`;
+    if (probe.status === 0 && isGnuTarVersion(text)) return candidate;
+  }
+  throw new Error(
+    "GNU tar is required (--sort/--mtime/--owner). Install it (macOS: brew install gnu-tar) or set LHC_ARCHIVE_TAR. Windows Git usr/bin/tar.exe is GNU; System32 tar is not.",
+  );
+}
+
+function archivePathNeedsForceLocal(archivePath: string): boolean {
+  return /^[A-Za-z]:[\\/]/.test(archivePath);
 }
 
 function run(
@@ -190,7 +248,7 @@ function buildLhcDist(source: string, lhcPkg: NpmPackageJson, destDist: string):
     if (!NodeFS.existsSync(tsc)) {
       throw new Error("LHC package install did not provide typescript/bin/tsc");
     }
-    run(tsc, ["-p", "tsconfig.json"], work);
+    runTsc(tsc, ["-p", "tsconfig.json"], work);
     const built = NodePath.join(work, "dist");
     if (!NodeFS.existsSync(NodePath.join(built, "index.js"))) {
       throw new Error("LHC tsc produced no dist/index.js");
@@ -235,7 +293,7 @@ function stageClaudeLhc(stage: string, pin: SidecarPin): SidecarProvenance {
     if (!NodeFS.existsSync(tsc)) {
       throw new Error("claude-lhc install did not provide typescript/bin/tsc");
     }
-    run(tsc, ["-p", "tsconfig.json"], sidecarRoot);
+    runTsc(tsc, ["-p", "tsconfig.json"], sidecarRoot);
     const entry = NodePath.join(sidecarRoot, "dist", "sidecar.js");
     if (!NodeFS.existsSync(entry)) {
       throw new Error("claude-lhc tsc produced no dist/sidecar.js");
@@ -359,12 +417,14 @@ function main() {
     const archivePath = NodePath.join(outDir, name);
     NodeFS.rmSync(archivePath, { force: true });
     console.log(`[lhc-archive] packing ${name}`);
+    const gnuTar = resolveGnuTar();
     run(
-      "tar",
+      gnuTar,
       tarArguments({
         archivePath,
         excludedPrefixes: archiveExcludedPrefixes(WSL_RUNTIME_ARCHIVE_EXCLUDED_PREFIXES, platform),
         mtimeEpochSeconds: commitTime,
+        forceLocal: archivePathNeedsForceLocal(archivePath),
       }),
       stage,
     );
@@ -376,7 +436,15 @@ function main() {
     // Post-pack check: the extracted tree must answer with its identity.
     const probe = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3code-lhc-probe-"));
     try {
-      run("tar", ["-xzf", archivePath], probe);
+      run(
+        gnuTar,
+        [
+          "-xzf",
+          ...(archivePathNeedsForceLocal(archivePath) ? ["--force-local"] : []),
+          archivePath,
+        ],
+        probe,
+      );
       const expected = expectedLhcVersionLine(identity);
       const hostMatchesArchive =
         (hostPlatform === "linux" && platform === "linux") ||

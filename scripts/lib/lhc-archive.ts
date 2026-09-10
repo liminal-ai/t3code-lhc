@@ -178,6 +178,7 @@ export function tarArguments(input: {
   readonly archivePath: string;
   readonly excludedPrefixes: ReadonlyArray<string>;
   readonly mtimeEpochSeconds: number;
+  readonly forceLocal?: boolean;
 }): ReadonlyArray<string> {
   if (!Number.isInteger(input.mtimeEpochSeconds) || input.mtimeEpochSeconds < 0) {
     throw new Error(
@@ -185,6 +186,7 @@ export function tarArguments(input: {
     );
   }
   return [
+    ...(input.forceLocal === true ? ["--force-local"] : []),
     "--sort=name",
     "--owner=0",
     "--group=0",
@@ -197,6 +199,11 @@ export function tarArguments(input: {
     input.archivePath,
     ...ARCHIVE_ROOTS,
   ];
+}
+
+/** True when `tar --version` is GNU tar (required for --sort/--mtime/--owner). */
+export function isGnuTarVersion(versionText: string): boolean {
+  return /\bGNU tar\b/i.test(versionText);
 }
 
 /** `sha256sum` line format so `sha256sum -c` verifies it. */

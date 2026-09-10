@@ -7,6 +7,7 @@ import {
   archiveVersionFromFileName,
   buildManifest,
   expectedLhcVersionLine,
+  isGnuTarVersion,
   sha256Line,
   stageDependencies,
   tarArguments,
@@ -113,9 +114,24 @@ describe("lhc-archive", () => {
       "/out/a.tar.gz",
       ...ARCHIVE_ROOTS,
     ]);
+    expect(
+      tarArguments({
+        archivePath: "C:\\out\\a.tar.gz",
+        excludedPrefixes: [],
+        mtimeEpochSeconds: 1,
+        forceLocal: true,
+      })[0],
+    ).toBe("--force-local");
     expect(() =>
       tarArguments({ archivePath: "/out/a.tar.gz", excludedPrefixes: [], mtimeEpochSeconds: 1.5 }),
     ).toThrow(/non-negative integer/);
+  });
+
+  it("accepts GNU tar version text and rejects BSD tar", () => {
+    expect(isGnuTarVersion("tar (GNU tar) 1.35\nCopyright (C) 2023 Free Software Foundation")).toBe(
+      true,
+    );
+    expect(isGnuTarVersion("bsdtar 3.7.2 - libarchive 3.7.2 zlib/1.2.13")).toBe(false);
   });
 
   it("rewrites only workspace: specs onto file: bindings", async () => {

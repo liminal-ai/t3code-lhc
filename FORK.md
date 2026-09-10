@@ -78,10 +78,12 @@ and trust.
   Builds are reproducible: two builds of one commit give one sha256 (no build time
   in the manifest, tar mtimes pinned to the commit time, `gzip -n`).
 - Install or update: `scripts/install-lhc.sh [--archive FILE | --use VERSION]`.
-  Store at `~/.local/share/t3code-lhc`: `versions/<version>/`, `current` symlink
-  (swapped only after the extracted tree answers `--lhc-version`), `bin/t3code-lhc`
-  launcher, `receipt.json` (version, upstreamTag, prefix, name, source, sha256,
-  installedAt, previous). With no `--archive` it reads
+  Store at `~/.local/share/t3code-lhc`: `versions/<version>/`, `current` (POSIX
+  symlink, or a Windows directory junction via `scripts/lib/lhc-store.mjs`; Git
+  Bash `ln -s` copies and is not used), `bin/t3code-lhc` launcher,
+  `receipt.json` (version, upstreamTag, prefix, name, source, sha256,
+  installedAt, previous). Run `scripts/install-lhc.sh` from Git Bash on Windows
+  (PowerShell cannot execute it). With no `--archive` it reads
   `liminal-ai/t3code-lhc` releases/latest and installs only if the asset version
   differs from the receipt: equality, never ordering. Old versions stay; rollback
   is `--use <version>`. It never touches systemd. Tests: `scripts/install-lhc.test.sh`.
@@ -114,9 +116,11 @@ so the UI's update path is inert.
 `lhc-release.yml` is dispatch only (a tag never triggers it).
 
 - Candidate: dispatch with `promote` unchecked. Native jobs build linux-x64,
-  darwin-arm64, and win32-x64, run the two scripts tests on Linux, prove the
+  darwin-arm64, and win32-x64 under Node 24.3 with GNU tar (macOS `gnu-tar`,
+  Windows Git `usr/bin/tar.exe`), run the two scripts tests on Linux, prove the
   Linux archive on a clean host (`scripts/lhc-clean-host-proof.sh`: identity, UI,
-  packaged sidecar stdin-EOF under Node; same file locally), and upload each
+  packaged sidecar stdin-EOF under Node), then install each native artifact on
+  its OS and prove `--lhc-version` plus sidecar stdin-EOF. Upload each
   `<name>.tar.gz`, `.sha256`, `.manifest.json` (14 days).
 - Qualification: those jobs green, plus the local gate on the same artifact:
   install into a scratch prefix and port with the live sidecar, the campaign's
@@ -149,5 +153,9 @@ source checkout of long-horizon-context is not required. `CLAUDE_LHC_SIDECAR`
 overrides the bundled JS entry. The archive builder clones
 `lhc-release/sidecar.json`'s commit; it does not copy a developer working tree.
 Source-build recipe: Node 24.3, npm 11.16 for the LHC pin install (npm 11.4.2
-breaks that install), then `node scripts/build-lhc-archive.ts`. Do not lower
-third-party `engines` blindly.
+breaks that install), GNU tar (`gtar` / Git `usr/bin/tar.exe`; System32 and BSD
+`tar` are not enough), then `node scripts/build-lhc-archive.ts`. Override with
+`LHC_ARCHIVE_TAR` / `LHC_ARCHIVE_NPM` (path to `npm-cli.js`). Do not lower
+third-party `engines` blindly. The builder runs `tsc` as
+`process.execPath [typescript/bin/tsc, ...]` from the pin's own install, then
+prunes devDependencies.

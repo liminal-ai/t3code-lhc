@@ -53,9 +53,21 @@ jobs:
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
         with:
-          node-version-file: package.json
+          node-version: 24.3.0
           cache: true
           run-install: true
+
+      - name: GNU tar (macOS)
+        if: matrix.platform == 'darwin'
+        run: |
+          brew list gnu-tar >/dev/null 2>&1 || brew install gnu-tar
+          echo "LHC_ARCHIVE_TAR=$(brew --prefix gnu-tar)/libexec/gnubin/tar" >> "$GITHUB_ENV"
+
+      - name: GNU tar (Windows Git)
+        if: matrix.platform == 'win32'
+        shell: bash
+        run: |
+          echo "LHC_ARCHIVE_TAR=C:/Program Files/Git/usr/bin/tar.exe" >> "$GITHUB_ENV"
 
       - name: Build archive
         run: node scripts/build-lhc-archive.ts --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
@@ -122,10 +134,70 @@ jobs:
           version="$(node -p 'require("./lhc-release/version.json").version')"
           scripts/lhc-clean-host-proof.sh "dist-lhc/t3code-lhc-${version}-linux-x64.tar.gz"
 
+  installed_host:
+    name: Installed ${{ matrix.platform }}-${{ matrix.arch }}
+    needs: candidate
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux
+            arch: x64
+            runner: ubuntu-latest
+          - platform: darwin
+            arch: arm64
+            runner: macos-14
+          - platform: win32
+            arch: x64
+            runner: windows-latest
+    steps:
+      - name: Checkout scripts
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /scripts/
+            /lhc-release/
+            /package.json
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Node 24.3
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.3.0
+
+      - name: Download candidate
+        uses: actions/download-artifact@v4
+        with:
+          pattern: t3code-lhc-*-${{ matrix.platform }}-${{ matrix.arch }}
+          path: dist-lhc
+          merge-multiple: true
+
+      - name: Install and prove default sidecar
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p 'require("./lhc-release/version.json").version')"
+          name="t3code-lhc-${version}-${{ matrix.platform }}-${{ matrix.arch }}"
+          prefix="$RUNNER_TEMP/t3code-lhc"
+          node -e 'const [maj,min]=process.versions.node.split(".").map(Number); if (!(maj===24 && min===3)) { console.error(process.versions.node); process.exit(1); }'
+          scripts/install-lhc.sh --prefix "$prefix" --archive "dist-lhc/${name}.tar.gz" --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
+          got="$("$prefix/bin/t3code-lhc" --lhc-version)"
+          want="t3code-lhc ${version} (upstream $(node -p 'require("./lhc-release/version.json").upstreamTag'))"
+          [ "$got" = "$want" ] || { echo "installed identity [$got] is not [$want]"; exit 1; }
+          test -f "$prefix/current/vendor/claude-lhc/dist/sidecar.js"
+          HOME="$RUNNER_TEMP" T3CODE_LHC_HOME="$RUNNER_TEMP/lhc-eof" \
+            env -u CLAUDE_LHC_SIDECAR \
+            node "$prefix/current/vendor/claude-lhc/dist/sidecar.js" </dev/null
+          echo "sidecar stdin-eof: PASS"
+          current="$(node scripts/lib/lhc-store.mjs read-current "$prefix")"
+          [ "$current" = "$version" ] || { echo "current $current is not $version"; exit 1; }
+
   promote:
     name: Promote
     if: ${{ inputs.promote }}
-    needs: [candidate, clean_host]
+    needs: [candidate, clean_host, installed_host]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

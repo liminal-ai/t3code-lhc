@@ -12,15 +12,17 @@
 # Store layout under PREFIX:
 #   versions/<version>/   extracted archive (manifest.json, apps/server/dist, node_modules,
 #                         vendor/claude-lhc)
-#   current -> versions/<version>   swapped atomically, only after the extracted tree
-#                                   answers `--lhc-version` with the manifest's identity
+#   current -> versions/<version>   POSIX symlink, or a Windows directory junction
+#                                   (Git Bash ln -s copies; Node fs.symlinkSync junction
+#                                   does not). Swapped only after `--lhc-version` matches.
 #   bin/t3code-lhc        launcher: sets CLAUDE_LHC_SIDECAR to
 #                         current/vendor/claude-lhc/dist/sidecar.js unless already set,
 #                         then exec node current/apps/server/dist/bin.mjs
 #   bin/t3code-lhc.cmd    Windows server wrapper (same env, then node)
 #   receipt.json          { version, upstreamTag, prefix, name, source, sha256, installedAt, previous }
 #
-# Versions are compared for equality only, never ordered (FORK.md). Node >= 24.3
+# Run this file with Git Bash (or another POSIX bash). PowerShell cannot execute
+# it. Versions are compared for equality only, never ordered (FORK.md). Node >= 24.3
 # and an authenticated Claude Code CLI are runtime prerequisites. Old versions
 # are never deleted. systemd is never touched.
 set -euo pipefail
@@ -83,6 +85,8 @@ CURRENT="$PREFIX/current"
 RECEIPT="$PREFIX/receipt.json"
 LAUNCHER="$PREFIX/bin/t3code-lhc"
 WIN_LAUNCHER="$PREFIX/bin/t3code-lhc.cmd"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+STORE_HELPER="$HERE/lib/lhc-store.mjs"
 SUFFIX="-${PLATFORM}-${ARCH}.tar.gz"
 mkdir -p "$STORE" "$PREFIX/bin"
 
@@ -122,8 +126,7 @@ EOF
 }
 
 swap_current() { # $1 version
-  ln -sfn "versions/$1" "$CURRENT.tmp"
-  mv -Tf "$CURRENT.tmp" "$CURRENT"
+  node "$STORE_HELPER" swap-current "$PREFIX" "$1"
 }
 
 write_receipt() { # version upstreamTag name source sha256 previous

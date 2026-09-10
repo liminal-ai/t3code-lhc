@@ -53,6 +53,8 @@ scripts/build-lhc-archive.ts
 scripts/lib/lhc-archive.ts
 scripts/lib/lhc-archive.test.ts
 scripts/lib/lhc-sidecar-stage.ts
+scripts/lib/lhc-store.mjs
+scripts/lib/lhc-store.test.ts
 scripts/install-lhc.sh
 scripts/install-lhc.test.sh
 scripts/lhc-clean-host-proof.sh
