@@ -142,6 +142,29 @@ function runTsc(tscFile: string, args: ReadonlyArray<string>, cwd: string): stri
   return run(process.execPath, [tscFile, ...args], cwd);
 }
 
+function runVp(args: ReadonlyArray<string>, cwd: string): string {
+  const vpJs = NodePath.join(repoRoot, "node_modules", "vite-plus", "bin", "vp");
+  if (!NodeFS.existsSync(vpJs)) {
+    throw new Error(`vite-plus bin/vp missing at ${vpJs}`);
+  }
+  return run(process.execPath, [vpJs, ...args], cwd);
+}
+
+function gnuTarPath(): string {
+  return NodePath.dirname(resolveGnuTar());
+}
+
+function withGnuTarPath(env?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const tarDir = gnuTarPath();
+  const pathKey = process.platform === "win32" ? "Path" : "PATH";
+  const current = env?.[pathKey] ?? env?.PATH ?? process.env[pathKey] ?? process.env.PATH ?? "";
+  return {
+    ...env,
+    PATH: `${tarDir}${NodePath.delimiter}${current}`,
+    Path: `${tarDir}${NodePath.delimiter}${current}`,
+  };
+}
+
 function resolveGnuTar(): string {
   const override = process.env.LHC_ARCHIVE_TAR?.trim();
   const candidates = [
@@ -344,11 +367,10 @@ function main() {
     throw new Error(`unsupported archive target ${platform}-${arch}`);
   }
   const identity = { version: lhcVersion.version, upstreamTag: lhcVersion.upstreamTag };
-  const vp = NodePath.join(repoRoot, "node_modules/.bin/vp");
 
   if (!options.skipBuild) {
     console.log("[lhc-archive] building server (with web client)...");
-    run(vp, ["run", "--filter", "t3", "build"], repoRoot);
+    runVp(["run", "--filter", "t3", "build"], repoRoot);
   }
   const serverDist = NodePath.join(repoRoot, "apps/server/dist");
   for (const required of ["bin.mjs", "client/index.html"]) {
@@ -410,7 +432,7 @@ function main() {
       });
     }
     console.log("[lhc-archive] installing runtime dependency closure...");
-    run(vp, [...STAGE_INSTALL_ARGS], stage);
+    runVp([...STAGE_INSTALL_ARGS], stage);
 
     const pin: SidecarPin = sidecarPin;
     console.log(`[lhc-archive] staging ${LHC_SIDECAR_ARCHIVE_ROOT} from ${pin.commit}`);
@@ -447,6 +469,7 @@ function main() {
         forceLocal: archivePathNeedsForceLocal(archivePath),
       }),
       stage,
+      withGnuTarPath(),
     );
     const digest = NodeCrypto.createHash("sha256")
       .update(NodeFS.readFileSync(archivePath))
@@ -464,6 +487,7 @@ function main() {
           archivePath,
         ],
         probe,
+        withGnuTarPath(),
       );
       const expected = expectedLhcVersionLine(identity);
       const hostMatchesArchive =

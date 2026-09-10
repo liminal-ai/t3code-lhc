@@ -72,7 +72,8 @@ and trust.
   compiled on the Linux builder, Mac/Windows node-pty prebuilds), and
   `vendor/claude-lhc` (compiled `dist/sidecar.js`, built `lhc` dist, JS closure from
   `lhc-release/sidecar.json`; after npm, `node_modules/lhc` is copied as a real
-  directory so Windows cannot pack a junction to the build machine). Optional `@anthropic-ai/claude-agent-sdk-*`
+  directory — Windows npm 11.16 still junctions `file:./lhc` even with
+  `install-links=true`). Optional `@anthropic-ai/claude-agent-sdk-*`
   platform packages are not shipped: T3 passes `pathToClaudeCodeExecutable`.
   The script refuses to emit an archive whose extracted tree does not answer
   `--lhc-version` with the manifest identity.
@@ -160,4 +161,6 @@ Override with `LHC_ARCHIVE_TAR` / `LHC_ARCHIVE_NPM` (path to npm 11.16.0
 `npm-cli.js`). Do not lower
 third-party `engines` blindly. The builder runs `tsc` as
 `process.execPath [typescript/bin/tsc, ...]` from the pin's own install, then
-prunes devDependencies.
+prunes devDependencies. Vite+ is `process.execPath [node_modules/vite-plus/bin/vp, ...]`,
+not `node_modules/.bin/vp`. GNU tar child PATH includes that tar's directory so
+Windows Git `gzip` is reachable.

@@ -38,8 +38,8 @@ export function packedLhcResolvesInsideArchive(
 }
 
 /** Hoisted physical node_modules. Optional deps stay on; executables are removed by name.
- *  install-links copies file: deps instead of a Windows junction to the stage path. */
-export const SIDECAR_NPMRC = "node-linker=hoisted\ninstall-links=true\n";
+ *  Windows npm 11.16 still junctions file:./lhc; staging copies that directory after install. */
+export const SIDECAR_NPMRC = "node-linker=hoisted\n";
 
 const WORKSPACE_PROTOCOL = "workspace:";
 

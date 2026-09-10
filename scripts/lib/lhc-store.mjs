@@ -13,21 +13,16 @@ export function currentLinkTarget(version) {
   return NodePath.join("versions", version);
 }
 
-/** Windows junctions resolve relative targets against cwd, not the link dirname. */
-export function windowsJunctionTarget(prefix, version) {
-  return NodePath.resolve(prefix, "versions", version);
-}
-
 export function swapCurrent(input) {
   const platform = input.platform ?? process.platform;
-  const prefix = NodePath.resolve(input.prefix);
-  const current = NodePath.join(prefix, "current");
+  const current = NodePath.join(input.prefix, "current");
+  const target = currentLinkTarget(input.version);
   const staging = `${current}.${process.pid}.tmp`;
   NodeFS.rmSync(staging, { recursive: true, force: true });
   if (isWindowsStoreHost(platform)) {
-    NodeFS.symlinkSync(windowsJunctionTarget(prefix, input.version), staging, "junction");
+    NodeFS.symlinkSync(target, staging, "junction");
   } else {
-    NodeFS.symlinkSync(currentLinkTarget(input.version), staging);
+    NodeFS.symlinkSync(target, staging);
   }
   NodeFS.rmSync(current, { recursive: true, force: true });
   NodeFS.renameSync(staging, current);

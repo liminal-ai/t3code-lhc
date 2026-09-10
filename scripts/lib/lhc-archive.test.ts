@@ -175,9 +175,7 @@ describe("lhc-archive", () => {
       version: "0.1.0",
       dependencies: { lhc: "file:./lhc", zod: "4.4.3" },
     });
-    const { packedLhcResolvesInsideArchive, SIDECAR_NPMRC } =
-      await import("./lhc-sidecar-stage.ts");
-    expect(SIDECAR_NPMRC).toContain("install-links=true");
+    const { packedLhcResolvesInsideArchive } = await import("./lhc-sidecar-stage.ts");
     expect(packedLhcResolvesInsideArchive("/tmp/x/vendor/claude-lhc/lhc", "/tmp/x")).toBe(true);
     expect(
       packedLhcResolvesInsideArchive(
