@@ -3,6 +3,8 @@
 // this module only rewrites workspace: protocol refs. IO lives in
 // scripts/build-lhc-archive.ts.
 
+import * as NodePath from "node:path";
+
 export const LHC_SIDECAR_ARCHIVE_ROOT = "vendor/claude-lhc";
 export const LHC_SIDECAR_LAUNCHER = `${LHC_SIDECAR_ARCHIVE_ROOT}/dist/sidecar.js`;
 
@@ -24,8 +26,20 @@ export function isBundledClaudeExecutablePackage(name: string): boolean {
   return name.startsWith(BUNDLED_CLAUDE_EXECUTABLE_PACKAGE_PREFIX);
 }
 
-/** Hoisted physical node_modules. Optional deps stay on; executables are removed by name. */
-export const SIDECAR_NPMRC = "node-linker=hoisted\n";
+/** True when a packed node_modules/lhc path stays inside the extracted archive. */
+export function packedLhcResolvesInsideArchive(
+  packedLhcPath: string,
+  archiveRoot: string,
+): boolean {
+  const root = NodePath.resolve(archiveRoot);
+  const resolved = NodePath.resolve(packedLhcPath);
+  const relative = NodePath.relative(root, resolved);
+  return relative !== "" && !relative.startsWith("..") && !NodePath.isAbsolute(relative);
+}
+
+/** Hoisted physical node_modules. Optional deps stay on; executables are removed by name.
+ *  install-links copies file: deps instead of a Windows junction to the stage path. */
+export const SIDECAR_NPMRC = "node-linker=hoisted\ninstall-links=true\n";
 
 const WORKSPACE_PROTOCOL = "workspace:";
 

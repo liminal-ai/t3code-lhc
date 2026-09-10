@@ -25,6 +25,7 @@ apps/server/src/orchestration/lhcImportIds.ts
 apps/server/src/provider/Drivers/ClaudeLhcSidecar.ts
 
 # Upstream files touched (additive, minimal)
+apps/server/package.json
 apps/server/src/bin.ts
 apps/server/src/environment/ServerEnvironment.ts
 apps/server/src/orchestration/decider.ts
@@ -35,6 +36,7 @@ apps/server/src/provider/Layers/ClaudeAdapter.ts
 docs/user/install.md
 docs/user/providers-claude.md
 docs/user/providers-codex.md
+package.json
 packages/contracts/src/environment.ts
 packages/contracts/src/orchestration.ts
 packages/contracts/src/settings.ts

@@ -1,18 +1,24 @@
 # Fork-owned release pipeline for liminal-ai/t3code-lhc (see FORK.md, Release).
 # Dispatch only. Native jobs build linux-x64, darwin-arm64, and win32-x64
 # archives, run the scripts tests, and prove the Linux archive on a clean host.
-# With promote=true those exact qualified artifacts become the GitHub release
-# lhc-v<version> marked latest (the tag is created here, so a tag exists only
-# for a promoted build). A second promote dispatch does not rebuild.
+# Promote is a separate dispatch: promote=true plus candidate_run_id of a
+# successful same-SHA candidate run. That downloads the frozen three artifacts
+# and does not rebuild. Authenticated Mac/Windows lifecycle happens between
+# those two dispatches.
 name: LHC release
 
 on:
   workflow_dispatch:
     inputs:
       promote:
-        description: "Create release lhc-v<version> from the qualified artifact and mark it latest"
+        description: "Create release lhc-v<version> from already-tested artifacts and mark it latest"
         type: boolean
         default: false
+      candidate_run_id:
+        description: "Successful same-SHA candidate run whose three artifacts to promote (required with promote; skips rebuild)"
+        type: string
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -24,6 +30,7 @@ concurrency:
 jobs:
   candidate:
     name: Candidate ${{ matrix.platform }}-${{ matrix.arch }}
+    if: ${{ inputs.candidate_run_id == '' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     strategy:
@@ -110,6 +117,7 @@ jobs:
 
   clean_host:
     name: Clean host
+    if: ${{ inputs.candidate_run_id == '' }}
     needs: candidate
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -136,6 +144,7 @@ jobs:
 
   installed_host:
     name: Installed ${{ matrix.platform }}-${{ matrix.arch }}
+    if: ${{ inputs.candidate_run_id == '' }}
     needs: candidate
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 25
@@ -196,15 +205,16 @@ jobs:
 
   promote:
     name: Promote
-    if: ${{ inputs.promote }}
-    needs: [candidate, clean_host, installed_host]
+    if: ${{ inputs.promote && inputs.candidate_run_id != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: write
     env:
       GH_TOKEN: ${{ github.token }}
-      VERSION: ${{ needs.candidate.outputs.version }}
+      CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+    outputs:
+      version: ${{ steps.identity.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -213,12 +223,34 @@ jobs:
             /lhc-release/
           sparse-checkout-cone-mode: false
 
-      - name: Download qualified artifacts
+      - name: Require frozen candidate run
+        run: |
+          if [ -z "${CANDIDATE_RUN_ID}" ]; then
+            echo "promote=true requires candidate_run_id of a successful same-SHA candidate run; do not rebuild by redispatched promote"
+            exit 1
+          fi
+          conclusion="$(gh run view "$CANDIDATE_RUN_ID" --json conclusion,headSha,event,name --jq '[.conclusion,.headSha,.event,.name] | @tsv')"
+          echo "source run: $conclusion"
+          head="$(gh run view "$CANDIDATE_RUN_ID" --json headSha --jq .headSha)"
+          [ "$head" = "${{ github.sha }}" ] || { echo "candidate_run_id head $head is not ${{ github.sha }}"; exit 1; }
+          status="$(gh run view "$CANDIDATE_RUN_ID" --json conclusion --jq .conclusion)"
+          [ "$status" = "success" ] || { echo "candidate_run_id conclusion is $status"; exit 1; }
+
+      - name: Download frozen artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: t3code-lhc-${{ env.VERSION }}-*
+          pattern: t3code-lhc-*
           path: dist-lhc
           merge-multiple: true
+          run-id: ${{ inputs.candidate_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Identity from frozen artifacts
+        id: identity
+        run: |
+          version="$(node -p 'require("./lhc-release/version.json").version')"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Verify exact artifacts
         run: |
@@ -255,7 +287,7 @@ jobs:
             echo "t3code-lhc ${VERSION} (upstream ${upstream}, BASE ${base}), commit ${{ github.sha }}."
             echo
             echo "Install or update: \`scripts/install-lhc.sh\` (see FORK.md). Linux x64, macOS ARM64, Windows x64. Node >= 24.3 and an authenticated Claude Code CLI are prerequisites. The claude-lhc sidecar is in the archive (Node JS entry; no Bun)."
-            echo "Qualified by run ${{ github.run_id }}: native archives, scripts tests, Linux clean-host proof; local smoke recorded in the campaign evidence."
+            echo "Qualified by frozen candidate run ${CANDIDATE_RUN_ID} at ${{ github.sha }}; this promote run ${{ github.run_id }} published those exact bytes."
           } > notes.md
           gh release create "lhc-v${VERSION}" \
             --target "${{ github.sha }}" \
@@ -269,12 +301,12 @@ jobs:
   public_check:
     name: Public install check
     if: ${{ inputs.promote }}
-    needs: [candidate, promote]
+    needs: [promote]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       GITHUB_TOKEN: ${{ github.token }}
-      VERSION: ${{ needs.candidate.outputs.version }}
+      VERSION: ${{ needs.promote.outputs.version }}
     steps:
       - name: Checkout scripts
         uses: actions/checkout@v6

@@ -57,6 +57,7 @@ import {
   isBundledClaudeExecutablePackage,
   LHC_SIDECAR_ARCHIVE_ROOT,
   LHC_SIDECAR_LAUNCHER,
+  packedLhcResolvesInsideArchive,
   packageJsonWithWorkspaceRewrites,
   SIDECAR_NPMRC,
   type NpmPackageJson,
@@ -477,6 +478,22 @@ function main() {
       }
       if (sidecarPkg.dependencies?.lhc !== "file:./lhc") {
         throw new Error("post-pack check failed: sidecar lhc is not file:./lhc");
+      }
+      const packedLhc = NodePath.join(probe, LHC_SIDECAR_ARCHIVE_ROOT, "node_modules", "lhc");
+      let packedLhcReal = packedLhc;
+      try {
+        packedLhcReal = NodeFS.realpathSync(packedLhc);
+      } catch {
+        const link = NodeFS.readlinkSync(packedLhc);
+        packedLhcReal = NodePath.resolve(NodePath.dirname(packedLhc), link);
+      }
+      if (!packedLhcResolvesInsideArchive(packedLhcReal, probe)) {
+        throw new Error(
+          `post-pack check failed: node_modules/lhc resolves outside the archive (${packedLhcReal})`,
+        );
+      }
+      if (!NodeFS.existsSync(NodePath.join(packedLhcReal, "package.json"))) {
+        throw new Error("post-pack check failed: packed lhc has no package.json");
       }
       const anthropic = NodePath.join(
         probe,

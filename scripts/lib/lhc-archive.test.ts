@@ -46,7 +46,7 @@ describe("lhc-archive", () => {
       commit: "bd6f0161f",
       platform: "linux",
       arch: "x64",
-      nodeEngine: "^24.13.1",
+      nodeEngine: ">=24.3.0",
       sidecar,
     });
     expect(manifest).toEqual({
@@ -56,7 +56,7 @@ describe("lhc-archive", () => {
       commit: "bd6f0161f",
       platform: "linux",
       arch: "x64",
-      node: "^24.13.1",
+      node: ">=24.3.0",
       roots: ["manifest.json", "apps/server/dist", "node_modules", "vendor/claude-lhc"],
       sidecar,
     });
@@ -168,6 +168,16 @@ describe("lhc-archive", () => {
       version: "0.1.0",
       dependencies: { lhc: "file:./lhc", zod: "4.4.3" },
     });
+    const { packedLhcResolvesInsideArchive, SIDECAR_NPMRC } =
+      await import("./lhc-sidecar-stage.ts");
+    expect(SIDECAR_NPMRC).toContain("install-links=true");
+    expect(packedLhcResolvesInsideArchive("/tmp/x/vendor/claude-lhc/lhc", "/tmp/x")).toBe(true);
+    expect(
+      packedLhcResolvesInsideArchive(
+        "/c/Users/lee/.local/share/lhc-testing/npm-link-probe/lhc",
+        "/tmp/x",
+      ),
+    ).toBe(false);
   });
 
   it("writes sha256sum-compatible lines", () => {

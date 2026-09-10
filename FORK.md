@@ -71,7 +71,8 @@ and trust.
   staged like the desktop sidecar, fff natives for the target, Linux pty.node
   compiled on the Linux builder, Mac/Windows node-pty prebuilds), and
   `vendor/claude-lhc` (compiled `dist/sidecar.js`, built `lhc` dist, JS closure from
-  `lhc-release/sidecar.json`). Optional `@anthropic-ai/claude-agent-sdk-*`
+  `lhc-release/sidecar.json`; `file:./lhc` is copied with `install-links=true` so
+  Windows does not pack a junction to the build machine). Optional `@anthropic-ai/claude-agent-sdk-*`
   platform packages are not shipped: T3 passes `pathToClaudeCodeExecutable`.
   The script refuses to emit an archive whose extracted tree does not answer
   `--lhc-version` with the manifest identity.
@@ -115,7 +116,7 @@ so the UI's update path is inert.
 
 `lhc-release.yml` is dispatch only (a tag never triggers it).
 
-- Candidate: dispatch with `promote` unchecked. Native jobs build linux-x64,
+- Candidate: dispatch with `promote` unchecked and `candidate_run_id` empty. Native jobs build linux-x64,
   darwin-arm64, and win32-x64 under Node 24.3 with GNU tar (macOS `gnu-tar`,
   Windows Git `usr/bin/tar.exe`), run the two scripts tests on Linux, prove the
   Linux archive on a clean host (`scripts/lhc-clean-host-proof.sh`: identity, UI,
@@ -126,13 +127,12 @@ so the UI's update path is inert.
   install into a scratch prefix and port with the live sidecar, the campaign's
   13-step smoke against it (tool turns, manual compact, restart, resume), one
   stock desktop client against that port. Recorded in the campaign evidence.
-- Promote: dispatch with `promote` checked from the qualified commit. The run
-  downloads the already-tested native artifacts (it does not rebuild), verifies
-  each manifest commit equals the run's SHA, creates the annotated tag
-  `lhc-v<version>` at that SHA, and creates the GitHub release from those exact
-  bytes with `--latest`. A tag exists only for a promoted build. An existing tag
-  or release fails the run: never re-promote, publish `<upstream>-lhc.N+1`.
-  Releases are never deleted or moved.
+- Promote: dispatch `promote=true` **and** `candidate_run_id` of a successful
+  same-SHA candidate run after Mac/Windows authenticated lifecycle on those
+  exact bytes. That path downloads the frozen three artifacts and does not
+  rebuild. `promote=true` without `candidate_run_id` fails. A tag exists only
+  for a promoted build. An existing tag or release fails the run: never
+  re-promote, publish `<upstream>-lhc.N+1`. Releases are never deleted or moved.
 - Public check: a fresh runner runs `scripts/install-lhc.sh` with no `--archive`
   against releases/latest, requires the launcher to print the promoted identity,
   and requires a second run to no-op ("already at").
