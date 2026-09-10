@@ -68,21 +68,16 @@ jobs:
         shell: bash
         run: |
           node -e 'const [maj,min]=process.versions.node.split(".").map(Number); if (!(maj===24 && min===3)) { console.error(process.versions.node); process.exit(1); }'
-          npm install --no-save --no-fund --no-audit npm@11.16.0
-          node -e '
-            const {createRequire}=require("node:module");
-            const {pathToFileURL}=require("node:url");
-            const cli=createRequire(pathToFileURL(process.cwd()+"/package.json")).resolve("npm/bin/npm-cli.js");
-            const {spawnSync}=require("node:child_process");
-            const ver=spawnSync(process.execPath,[cli,"--version"],{encoding:"utf8"});
-            if (ver.status!==0 || ver.stdout.trim()!=="11.16.0") {
-              console.error("archive npm is", ver.stdout, ver.stderr);
-              process.exit(1);
-            }
-            const fs=require("node:fs");
-            fs.appendFileSync(process.env.GITHUB_ENV, "LHC_ARCHIVE_NPM="+cli+"\n");
-            console.log("archive npm", ver.stdout.trim(), "at", cli);
-          '
+          prefix="${RUNNER_TEMP}/lhc-archive-npm"
+          mkdir -p "$prefix"
+          # Isolated prefix: do not npm-install inside the T3 pnpm workspace.
+          npm install --prefix "$prefix" --no-save --no-fund --no-audit npm@11.16.0
+          cli="$prefix/node_modules/npm/bin/npm-cli.js"
+          test -f "$cli"
+          ver="$(node "$cli" --version)"
+          [ "$ver" = "11.16.0" ] || { echo "archive npm is $ver at $cli"; exit 1; }
+          echo "LHC_ARCHIVE_NPM=$cli" >> "$GITHUB_ENV"
+          echo "archive npm $ver at $cli"
 
       - name: GNU tar (macOS)
         if: matrix.platform == 'darwin'

@@ -121,7 +121,8 @@ so the UI's update path is inert.
 
 - Candidate: dispatch with `promote` unchecked and `candidate_run_id` empty. Native jobs build linux-x64,
   darwin-arm64, and win32-x64 under Node 24.3 with GNU tar (macOS `gnu-tar`,
-  Windows Git `usr/bin/tar.exe`) and npm 11.16.0 (not the Node-bundled 11.4.2),
+  Windows Git `usr/bin/tar.exe`) and npm 11.16.0 installed into an isolated
+  `RUNNER_TEMP` prefix (not the T3 pnpm workspace; not the Node-bundled 11.4.2),
   run the two scripts tests on Linux, prove the
   Linux archive on a clean host (`scripts/lhc-clean-host-proof.sh`: identity, UI,
   packaged sidecar stdin-EOF under Node), then install each native artifact on
@@ -160,8 +161,8 @@ overrides the bundled JS entry. The archive builder clones
 Source-build recipe: Node 24.3, npm 11.16.0 for the LHC pin install (the Node
 24.3 bundle is 11.4.2 and is refused), GNU tar (`gtar` / Git `usr/bin/tar.exe`;
 System32 and BSD `tar` are not enough), then `node scripts/build-lhc-archive.ts`.
-Override with `LHC_ARCHIVE_TAR` / `LHC_ARCHIVE_NPM` (path to npm 11.16.0
-`npm-cli.js`). Do not lower
+Override with `LHC_ARCHIVE_TAR` / `LHC_ARCHIVE_NPM` (path to that isolated
+prefix's `node_modules/npm/bin/npm-cli.js`). Do not lower
 third-party `engines` blindly. The builder runs `tsc` as
 `process.execPath [typescript/bin/tsc, ...]` from the pin's own install, then
 prunes devDependencies. Vite+ is `process.execPath [node_modules/vite-plus/bin/vp, ...]`,

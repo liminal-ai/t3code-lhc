@@ -193,7 +193,7 @@ function archivePathNeedsForceLocal(archivePath: string): boolean {
   return /^[A-Za-z]:[\\/]/.test(archivePath);
 }
 
-/** GNU tar --owner=0/--group=0 can drop the executable bit on spawn-helper. */
+/** The staged node-pty prebuilt spawn-helper lacked execute mode. */
 function restoreDarwinSpawnHelperMode(stage: string): void {
   const helper = NodePath.join(
     stage,
