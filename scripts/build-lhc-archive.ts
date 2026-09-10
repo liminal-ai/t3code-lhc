@@ -193,6 +193,51 @@ function archivePathNeedsForceLocal(archivePath: string): boolean {
   return /^[A-Za-z]:[\\/]/.test(archivePath);
 }
 
+/** GNU tar --owner=0/--group=0 can drop the executable bit on spawn-helper. */
+function restoreDarwinSpawnHelperMode(stage: string): void {
+  const helper = NodePath.join(
+    stage,
+    "node_modules",
+    "node-pty",
+    "prebuilds",
+    "darwin-arm64",
+    "spawn-helper",
+  );
+  if (!NodeFS.existsSync(helper)) {
+    throw new Error(`darwin spawn-helper missing at ${helper}`);
+  }
+  NodeFS.chmodSync(helper, 0o755);
+}
+
+function proveDarwinPtySpawn(extractedRoot: string): void {
+  const helper = NodePath.join(
+    extractedRoot,
+    "node_modules",
+    "node-pty",
+    "prebuilds",
+    "darwin-arm64",
+    "spawn-helper",
+  );
+  const mode = NodeFS.statSync(helper).mode & 0o111;
+  if (mode === 0) {
+    throw new Error(`extracted spawn-helper is not executable (${helper})`);
+  }
+  const script = `
+    const pty = require("node-pty");
+    const term = pty.spawn("/bin/sh", ["-c", "printf ready"], { name: "xterm", cols: 40, rows: 10 });
+    let out = "";
+    term.onData((d) => { out += d; });
+    term.onExit(({ exitCode }) => {
+      if (!out.includes("ready")) {
+        console.error("pty spawn produced no output");
+        process.exit(1);
+      }
+      process.exit(exitCode === 0 ? 0 : 1);
+    });
+  `;
+  run(process.execPath, ["-e", script], extractedRoot);
+}
+
 function run(
   command: string,
   args: ReadonlyArray<string>,
@@ -458,6 +503,9 @@ function main() {
     const name = archiveFileName({ version: identity.version, platform, arch });
     const archivePath = NodePath.join(outDir, name);
     NodeFS.rmSync(archivePath, { force: true });
+    if (platform === "darwin") {
+      restoreDarwinSpawnHelperMode(stage);
+    }
     console.log(`[lhc-archive] packing ${name}`);
     const gnuTar = resolveGnuTar();
     run(
@@ -500,6 +548,7 @@ function main() {
         }).trim();
         if (printed !== expected)
           throw new Error(`post-pack identity check failed: got "${printed}", want "${expected}"`);
+        if (platform === "darwin") proveDarwinPtySpawn(probe);
       } else {
         console.log(
           `[lhc-archive] skipping live --lhc-version on ${hostPlatform} for ${platform} archive`,
@@ -507,6 +556,29 @@ function main() {
       }
       if (!NodeFS.existsSync(NodePath.join(probe, "apps/server/dist/client/index.html"))) {
         throw new Error("post-pack check failed: web client missing from the archive");
+      }
+      if (platform === "win32") {
+        const ffi = NodePath.join(probe, "node_modules", "@yuuang", "ffi-rs-win32-x64-msvc");
+        const fff = NodePath.join(probe, "node_modules", "@ff-labs", "fff-bin-win32-x64");
+        if (!NodeFS.existsSync(ffi)) {
+          throw new Error("post-pack check failed: @yuuang/ffi-rs-win32-x64-msvc missing");
+        }
+        if (!NodeFS.existsSync(fff)) {
+          throw new Error("post-pack check failed: @ff-labs/fff-bin-win32-x64 missing");
+        }
+      }
+      if (platform === "darwin") {
+        const helper = NodePath.join(
+          probe,
+          "node_modules",
+          "node-pty",
+          "prebuilds",
+          "darwin-arm64",
+          "spawn-helper",
+        );
+        if ((NodeFS.statSync(helper).mode & 0o111) === 0) {
+          throw new Error("post-pack check failed: darwin spawn-helper is not executable");
+        }
       }
       const sidecarLauncher = NodePath.join(probe, LHC_SIDECAR_LAUNCHER);
       if (!NodeFS.existsSync(sidecarLauncher)) {

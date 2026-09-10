@@ -151,6 +151,8 @@ export function archiveExcludedPrefixes(
             "node_modules/node-pty/prebuilds/win32-",
             "node_modules/node-pty/third_party/conpty",
             "node_modules/@msgpackr-extract/msgpackr-extract-win32-",
+            "node_modules/@ff-labs/fff-bin-win32-",
+            "node_modules/@yuuang/ffi-rs-win32-",
           ]);
   const prefixes = shared.filter((prefix) => !keep.has(prefix));
   if (platform === "linux") {

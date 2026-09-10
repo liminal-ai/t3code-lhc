@@ -69,7 +69,9 @@ and trust.
   linux-x64, darwin-arm64, and win32-x64; inside: `manifest.json`, `apps/server/dist`
   (web client at `dist/client`, no source maps), `node_modules` (runtime externals
   staged like the desktop sidecar, fff natives for the target, Linux pty.node
-  compiled on the Linux builder, Mac/Windows node-pty prebuilds), and
+  compiled on the Linux builder, Mac/Windows node-pty prebuilds with
+  `spawn-helper` mode 0755, Windows `@ff-labs/fff-bin-win32-` and
+  `@yuuang/ffi-rs-win32-` kept despite the shared WSL exclude list), and
   `vendor/claude-lhc` (compiled `dist/sidecar.js`, built `lhc` dist, JS closure from
   `lhc-release/sidecar.json`; after npm, `node_modules/lhc` is copied as a real
   directory — Windows npm 11.16 still junctions `file:./lhc` even with

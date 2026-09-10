@@ -204,12 +204,30 @@ describe("archiveExcludedPrefixes", () => {
     expect(result).toContain("node_modules/node-pty/prebuilds/win32-");
     expect(result).toContain("node_modules/node-pty/build/Release/obj");
     expect(result).toContain("vendor/claude-lhc/node_modules/@anthropic-ai/claude-agent-sdk-");
-    const darwin = archiveExcludedPrefixes(shared, "darwin");
+    const darwin = archiveExcludedPrefixes(
+      [
+        ...shared,
+        "node_modules/node-pty/prebuilds/darwin-",
+        "node_modules/@ff-labs/fff-bin-win32-",
+        "node_modules/@yuuang/ffi-rs-win32-",
+      ],
+      "darwin",
+    );
     expect(darwin).toContain("node_modules/node-pty/build");
     expect(darwin).not.toContain("node_modules/node-pty/prebuilds/darwin-");
-    const win = archiveExcludedPrefixes(shared, "win32");
+    const win = archiveExcludedPrefixes(
+      [
+        ...shared,
+        "node_modules/@ff-labs/fff-bin-win32-",
+        "node_modules/@yuuang/ffi-rs-win32-",
+        "node_modules/node-pty/third_party/conpty",
+      ],
+      "win32",
+    );
     expect(win).not.toContain("node_modules/node-pty/prebuilds/win32-");
     expect(win).not.toContain("node_modules/node-pty/third_party/conpty");
+    expect(win).not.toContain("node_modules/@ff-labs/fff-bin-win32-");
+    expect(win).not.toContain("node_modules/@yuuang/ffi-rs-win32-");
     expect(
       result.every((prefix) => !"node_modules/node-pty/build/Release/pty.node".startsWith(prefix)),
     ).toBe(true);

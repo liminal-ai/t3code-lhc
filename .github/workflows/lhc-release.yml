@@ -222,6 +222,26 @@ jobs:
           echo "sidecar stdin-eof: PASS"
           current="$(node scripts/lib/lhc-store.mjs read-current "$prefix")"
           [ "$current" = "$version" ] || { echo "current $current is not $version"; exit 1; }
+          if [ "${{ matrix.platform }}" = "darwin" ]; then
+            helper="$prefix/current/node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper"
+            test -x "$helper"
+            node -e '
+              const pty=require(process.argv[1]+"/node_modules/node-pty");
+              const term=pty.spawn("/bin/sh",["-c","printf ready"],{name:"xterm",cols:40,rows:10});
+              let out="";
+              term.onData((d)=>{out+=d;});
+              term.onExit(({exitCode})=>{
+                if(!out.includes("ready")) { console.error("pty produced no output"); process.exit(1); }
+                process.exit(exitCode===0?0:1);
+              });
+            ' "$prefix/current"
+            echo "darwin pty spawn: PASS"
+          fi
+          if [ "${{ matrix.platform }}" = "win32" ]; then
+            test -d "$prefix/current/node_modules/@yuuang/ffi-rs-win32-x64-msvc"
+            test -d "$prefix/current/node_modules/@ff-labs/fff-bin-win32-x64"
+            node -e 'require(process.argv[1]+"/node_modules/@ff-labs/fff-node"); console.log("fff native: PASS")' "$prefix/current"
+          fi
 
   promote:
     name: Promote
