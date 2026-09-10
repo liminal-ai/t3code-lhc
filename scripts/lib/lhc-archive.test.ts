@@ -8,6 +8,7 @@ import {
   buildManifest,
   expectedLhcVersionLine,
   isGnuTarVersion,
+  isQualifiedArchiveNpm,
   sha256Line,
   stageDependencies,
   tarArguments,
@@ -132,6 +133,12 @@ describe("lhc-archive", () => {
       true,
     );
     expect(isGnuTarVersion("bsdtar 3.7.2 - libarchive 3.7.2 zlib/1.2.13")).toBe(false);
+  });
+
+  it("qualifies npm 11.16.0 and rejects the Node-bundled 11.4.2", () => {
+    expect(isQualifiedArchiveNpm("11.16.0")).toBe(true);
+    expect(isQualifiedArchiveNpm("11.16.0\n")).toBe(true);
+    expect(isQualifiedArchiveNpm("11.4.2")).toBe(false);
   });
 
   it("rewrites only workspace: specs onto file: bindings", async () => {

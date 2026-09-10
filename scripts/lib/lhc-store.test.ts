@@ -4,11 +4,26 @@ import * as NodePath from "node:path";
 
 import { describe, expect, it } from "@effect/vitest";
 
-import { currentLinkTarget, readCurrentVersion, swapCurrent } from "./lhc-store.mjs";
+import {
+  currentLinkTarget,
+  readCurrentVersion,
+  swapCurrent,
+  windowsJunctionTarget,
+} from "./lhc-store.mjs";
 
 describe("lhc-store", () => {
   it("names the relative current target as versions/<version>", () => {
     expect(currentLinkTarget("0.0.40-lhc.3")).toBe(NodePath.join("versions", "0.0.40-lhc.3"));
+  });
+
+  it("uses an absolute Windows junction target under the store prefix, not cwd", () => {
+    const prefix = NodePath.resolve("/tmp/t3code-lhc-store");
+    expect(windowsJunctionTarget(prefix, "0.0.40-lhc.3")).toBe(
+      NodePath.resolve(prefix, "versions", "0.0.40-lhc.3"),
+    );
+    expect(windowsJunctionTarget(prefix, "0.0.40-lhc.3")).not.toBe(
+      NodePath.join("versions", "0.0.40-lhc.3"),
+    );
   });
 
   it("swaps current onto a new version and rollback follows the new marker", () => {

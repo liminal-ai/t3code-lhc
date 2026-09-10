@@ -47,6 +47,8 @@ import {
   expectedLhcVersionLine,
   isArchiveTarget,
   isGnuTarVersion,
+  isQualifiedArchiveNpm,
+  LHC_ARCHIVE_NPM_VERSION,
   sha256Line,
   stageDependencies,
   tarArguments,
@@ -107,27 +109,25 @@ function parseArgs(argv: ReadonlyArray<string>) {
 }
 
 /** LHC pin install: npm 11.16 works; 11.4.2 does not. Override with LHC_ARCHIVE_NPM. */
-function runNpm(args: ReadonlyArray<string>, cwd: string): string {
+function resolveNpmCli(): string {
   const override = process.env.LHC_ARCHIVE_NPM?.trim();
-  if (override !== undefined && override !== "") {
-    return runNodeCli(override, args, cwd);
-  }
-  const bundled = [
-    NodePath.join(NodePath.dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js"),
-    NodePath.join(
-      NodePath.dirname(process.execPath),
-      "..",
-      "lib",
-      "node_modules",
-      "npm",
-      "bin",
-      "npm-cli.js",
-    ),
-  ].find((candidate) => NodeFS.existsSync(candidate));
-  if (bundled !== undefined) return run(process.execPath, [bundled, ...args], cwd);
+  if (override !== undefined && override !== "") return override;
+  const local = NodePath.join(repoRoot, "node_modules", "npm", "bin", "npm-cli.js");
+  if (NodeFS.existsSync(local)) return local;
   throw new Error(
-    "npm-cli.js not found next to process.execPath; set LHC_ARCHIVE_NPM to npm-cli.js (npm 11.16; 11.4.2 breaks the LHC pin install)",
+    `npm ${LHC_ARCHIVE_NPM_VERSION} is required for the LHC pin install (Node 24.3 bundles 11.4.2). Install npm@${LHC_ARCHIVE_NPM_VERSION} or set LHC_ARCHIVE_NPM to that npm-cli.js.`,
   );
+}
+
+function runNpm(args: ReadonlyArray<string>, cwd: string): string {
+  const cli = resolveNpmCli();
+  const version = runNodeCli(cli, ["--version"], cwd).trim();
+  if (!isQualifiedArchiveNpm(version)) {
+    throw new Error(
+      `archive npm is ${version}; need ${LHC_ARCHIVE_NPM_VERSION} (11.4.2 is not qualified)`,
+    );
+  }
+  return runNodeCli(cli, args, cwd);
 }
 
 function runNodeCli(cli: string, args: ReadonlyArray<string>, cwd: string): string {
@@ -211,6 +211,24 @@ function readPackageJson(path: string): NpmPackageJson {
 
 function writePackageJson(path: string, pkg: NpmPackageJson): void {
   NodeFS.writeFileSync(path, `${JSON.stringify(pkg, null, 2)}\n`);
+}
+
+/** Replace a file: junction/symlink with a real directory inside the archive. */
+function materializePackedLhc(sidecarRoot: string): void {
+  const packed = NodePath.join(sidecarRoot, "node_modules", "lhc");
+  const source = NodePath.join(sidecarRoot, "lhc");
+  if (!NodeFS.existsSync(source)) {
+    throw new Error("staged vendor/claude-lhc/lhc missing before packing");
+  }
+  NodeFS.rmSync(packed, { recursive: true, force: true });
+  NodeFS.cpSync(source, packed, { recursive: true, dereference: true });
+  if (NodeFS.lstatSync(packed).isSymbolicLink()) {
+    throw new Error("materializePackedLhc left node_modules/lhc as a symlink");
+  }
+  const archiveRoot = NodePath.dirname(NodePath.dirname(sidecarRoot));
+  if (!packedLhcResolvesInsideArchive(NodeFS.realpathSync(packed), archiveRoot)) {
+    throw new Error("materializePackedLhc left node_modules/lhc outside the archive");
+  }
 }
 
 function removeBundledClaudeExecutables(nodeModulesDir: string): void {
@@ -300,6 +318,7 @@ function stageClaudeLhc(stage: string, pin: SidecarPin): SidecarProvenance {
       throw new Error("claude-lhc tsc produced no dist/sidecar.js");
     }
     runNpm(["prune", "--omit=dev", "--no-fund", "--no-audit"], sidecarRoot);
+    materializePackedLhc(sidecarRoot);
     return { repository: pin.repository, commit: pin.commit, claudeAgentSdk };
   } finally {
     NodeFS.rmSync(scratch, { recursive: true, force: true });

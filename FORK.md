@@ -71,8 +71,8 @@ and trust.
   staged like the desktop sidecar, fff natives for the target, Linux pty.node
   compiled on the Linux builder, Mac/Windows node-pty prebuilds), and
   `vendor/claude-lhc` (compiled `dist/sidecar.js`, built `lhc` dist, JS closure from
-  `lhc-release/sidecar.json`; `file:./lhc` is copied with `install-links=true` so
-  Windows does not pack a junction to the build machine). Optional `@anthropic-ai/claude-agent-sdk-*`
+  `lhc-release/sidecar.json`; after npm, `node_modules/lhc` is copied as a real
+  directory so Windows cannot pack a junction to the build machine). Optional `@anthropic-ai/claude-agent-sdk-*`
   platform packages are not shipped: T3 passes `pathToClaudeCodeExecutable`.
   The script refuses to emit an archive whose extracted tree does not answer
   `--lhc-version` with the manifest identity.
@@ -118,7 +118,8 @@ so the UI's update path is inert.
 
 - Candidate: dispatch with `promote` unchecked and `candidate_run_id` empty. Native jobs build linux-x64,
   darwin-arm64, and win32-x64 under Node 24.3 with GNU tar (macOS `gnu-tar`,
-  Windows Git `usr/bin/tar.exe`), run the two scripts tests on Linux, prove the
+  Windows Git `usr/bin/tar.exe`) and npm 11.16.0 (not the Node-bundled 11.4.2),
+  run the two scripts tests on Linux, prove the
   Linux archive on a clean host (`scripts/lhc-clean-host-proof.sh`: identity, UI,
   packaged sidecar stdin-EOF under Node), then install each native artifact on
   its OS and prove `--lhc-version` plus sidecar stdin-EOF. Upload each
@@ -152,10 +153,11 @@ providers are enabled. The sidecar itself is in the archive as compiled JS; a
 source checkout of long-horizon-context is not required. `CLAUDE_LHC_SIDECAR`
 overrides the bundled JS entry. The archive builder clones
 `lhc-release/sidecar.json`'s commit; it does not copy a developer working tree.
-Source-build recipe: Node 24.3, npm 11.16 for the LHC pin install (npm 11.4.2
-breaks that install), GNU tar (`gtar` / Git `usr/bin/tar.exe`; System32 and BSD
-`tar` are not enough), then `node scripts/build-lhc-archive.ts`. Override with
-`LHC_ARCHIVE_TAR` / `LHC_ARCHIVE_NPM` (path to `npm-cli.js`). Do not lower
+Source-build recipe: Node 24.3, npm 11.16.0 for the LHC pin install (the Node
+24.3 bundle is 11.4.2 and is refused), GNU tar (`gtar` / Git `usr/bin/tar.exe`;
+System32 and BSD `tar` are not enough), then `node scripts/build-lhc-archive.ts`.
+Override with `LHC_ARCHIVE_TAR` / `LHC_ARCHIVE_NPM` (path to npm 11.16.0
+`npm-cli.js`). Do not lower
 third-party `engines` blindly. The builder runs `tsc` as
 `process.execPath [typescript/bin/tsc, ...]` from the pin's own install, then
 prunes devDependencies.

@@ -206,6 +206,14 @@ export function isGnuTarVersion(versionText: string): boolean {
   return /\bGNU tar\b/i.test(versionText);
 }
 
+export const LHC_ARCHIVE_NPM_VERSION = "11.16.0";
+
+/** npm 11.4.2 crashed the original LHC pin install. */
+export function isQualifiedArchiveNpm(versionText: string): boolean {
+  const version = versionText.trim().split(/\s+/)[0] ?? "";
+  return version === LHC_ARCHIVE_NPM_VERSION;
+}
+
 /** `sha256sum` line format so `sha256sum -c` verifies it. */
 export function sha256Line(hexDigest: string, fileName: string): string {
   return `${hexDigest}  ${fileName}\n`;
