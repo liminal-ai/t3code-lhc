@@ -133,8 +133,9 @@ so the UI's update path is inert.
   stock desktop client against that port. Recorded in the campaign evidence.
 - Promote: dispatch `promote=true` **and** `candidate_run_id` of a successful
   same-SHA candidate run after Mac/Windows authenticated lifecycle on those
-  exact bytes. That path downloads the frozen three artifacts and does not
-  rebuild. `promote=true` without `candidate_run_id` fails. A tag exists only
+  exact bytes. That path downloads the frozen three artifacts (`actions:read`
+  plus `contents:write`, same pattern as Codex `lhc-release-promote.yml`) and
+  does not rebuild. `promote=true` without `candidate_run_id` fails. A tag exists only
   for a promoted build. An existing tag or release fails the run: never
   re-promote, publish `<upstream>-lhc.N+1`. Releases are never deleted or moved.
 - Public check: a fresh runner runs `scripts/install-lhc.sh` with no `--archive`

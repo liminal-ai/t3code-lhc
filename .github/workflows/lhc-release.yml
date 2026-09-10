@@ -249,6 +249,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
+      actions: read
       contents: write
     env:
       GH_TOKEN: ${{ github.token }}
