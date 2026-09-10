@@ -218,7 +218,7 @@ PRINTED="$(cd "$PARTIAL" && node apps/server/dist/bin.mjs --lhc-version 2>/dev/n
 
 TARGET="$STORE/${VERSION:?}"
 rm -rf "${TARGET:?}"
-mv -T "$PARTIAL" "$TARGET"
+mv "$PARTIAL" "$TARGET"
 swap_current "$VERSION"
 write_launcher
 write_receipt "$VERSION" "$M_TAG" "$NAME" "$SOURCE" "$SHA256" "$PREVIOUS"

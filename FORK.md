@@ -87,7 +87,9 @@ and trust.
   Bash `ln -s` copies and is not used), `bin/t3code-lhc` launcher,
   `receipt.json` (version, upstreamTag, prefix, name, source, sha256,
   installedAt, previous). Run `scripts/install-lhc.sh` from Git Bash on Windows
-  (PowerShell cannot execute it). With no `--archive` it reads
+  (PowerShell cannot execute it). `mv` of the extracted tree is portable (no GNU
+  `mv -T`); `readlink -f` and `sha256sum` are present on the supported hosts.
+  With no `--archive` it reads
   `liminal-ai/t3code-lhc` releases/latest and installs only if the asset version
   differs from the receipt: equality, never ordering. Old versions stay; rollback
   is `--use <version>`. It never touches systemd. Tests: `scripts/install-lhc.test.sh`.
