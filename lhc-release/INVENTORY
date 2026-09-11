@@ -30,6 +30,7 @@ apps/server/src/bin.ts
 apps/server/src/environment/ServerEnvironment.ts
 apps/server/src/orchestration/decider.ts
 apps/server/src/provider/Drivers/ClaudeDriver.ts
+apps/server/src/provider/Drivers/ClaudeHome.ts
 apps/server/src/provider/Drivers/CodexDriver.ts
 apps/server/src/provider/Drivers/GrokDriver.ts
 apps/server/src/provider/Layers/ClaudeAdapter.ts
@@ -65,6 +66,8 @@ lhc-release/RELEASES.md
 
 # Tests: upstream test files touched
 apps/server/src/environment/ServerEnvironment.test.ts
+apps/server/src/provider/Drivers/ClaudeHome.test.ts
+apps/server/src/provider/Layers/ClaudeAdapter.test.ts
 apps/server/src/provider/Layers/ProviderInstanceRegistryLive.test.ts
 apps/server/src/serverSettings.test.ts
 apps/web/src/components/settings/ProviderSettingsForm.test.ts
