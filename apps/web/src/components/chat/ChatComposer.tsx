@@ -3944,7 +3944,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           showInteractionModeToggle={planModeUiEnabled}
           interactionMode={interactionMode}
           runtimeMode={runtimeMode}
-          allowedRuntimeModes={allowedRuntimeModes}
+          {...(allowedRuntimeModes !== undefined ? { allowedRuntimeModes } : {})}
           size={composerControlsInStrip ? "xs" : "sm"}
           hidden={composerControlsHidden || restingHiddenBlockCount > 0}
           onToggleInteractionMode={toggleInteractionMode}
@@ -4024,7 +4024,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         <CompactComposerControlsMenu
           interactionMode={interactionMode}
           runtimeMode={runtimeMode}
-          allowedRuntimeModes={allowedRuntimeModes}
+          {...(allowedRuntimeModes !== undefined ? { allowedRuntimeModes } : {})}
           showInteractionModeToggle={planModeUiEnabled}
           traitsMenuContent={providerTraitsMenuContent}
           onToggleInteractionMode={toggleInteractionMode}
@@ -4065,7 +4065,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               <CompactComposerControlsMenu
                 interactionMode={interactionMode}
                 runtimeMode={runtimeMode}
-                allowedRuntimeModes={allowedRuntimeModes}
+                {...(allowedRuntimeModes !== undefined ? { allowedRuntimeModes } : {})}
                 size="xs"
                 hidden={composerControlsHidden || hiddenRestingBlockIds.length === 0}
                 showInteractionModeToggle={
