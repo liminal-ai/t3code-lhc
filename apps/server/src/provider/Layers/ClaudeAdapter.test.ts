@@ -6324,6 +6324,89 @@ describe("ClaudeAdapterLive", () => {
     },
   );
 
+  it.effect(
+    "resumes a stamped Claude cursor whose continuation identity matches and keeps that stamp",
+    () => {
+      const continuationKey = "claude:home:/tmp/claude-a";
+      const durableSessionId = "550e8400-e29b-41d4-a716-446655440000";
+      const harness = makeHarness({ continuationKey });
+      return Effect.gen(function* () {
+        const adapter = yield* ClaudeAdapter;
+        const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
+          Stream.takeUntil((event) => event.type === "thread.started"),
+          Stream.runCollect,
+          Effect.forkChild,
+        );
+
+        const session = yield* adapter.startSession({
+          threadId: RESUME_THREAD_ID,
+          provider: ProviderDriverKind.make("claudeAgent"),
+          resumeCursor: {
+            threadId: RESUME_THREAD_ID,
+            resume: durableSessionId,
+            resumeSessionAt: "assistant-99",
+            turnCount: 3,
+            continuationKey,
+          },
+          runtimeMode: "full-access",
+        });
+
+        const startedCursor = session.resumeCursor as {
+          readonly resume?: string;
+          readonly continuationKey?: string;
+        };
+        assert.equal(session.threadId, RESUME_THREAD_ID);
+        assert.equal(startedCursor.resume, durableSessionId);
+        assert.equal(startedCursor.continuationKey, continuationKey);
+
+        const createInput = harness.getLastCreateQueryInput();
+        assert.equal(createInput?.options.resume, durableSessionId);
+        assert.equal(createInput?.options.sessionId, undefined);
+        assert.equal(createInput?.options.resumeSessionAt, undefined);
+
+        harness.query.emit({
+          type: "system",
+          subtype: "init",
+          apiKeySource: "none",
+          claude_code_version: "test",
+          cwd: "/tmp/claude-adapter-test",
+          tools: [],
+          mcp_servers: [],
+          model: SYNTHETIC_CLAUDE_STANDARD_MODEL,
+          permissionMode: "bypassPermissions",
+          slash_commands: [],
+          output_style: "default",
+          skills: [],
+          plugins: [],
+          session_id: durableSessionId,
+          uuid: "matching-stamp-init",
+        } as unknown as SDKMessage);
+
+        const runtimeEvents = Array.from(yield* Fiber.join(runtimeEventsFiber));
+        const threadStarted = runtimeEvents.find((event) => event.type === "thread.started");
+        assert.equal(threadStarted?.type, "thread.started");
+        if (threadStarted?.type === "thread.started") {
+          assert.deepEqual(threadStarted.payload, {
+            providerThreadId: durableSessionId,
+          });
+        }
+
+        const activeSessions = yield* adapter.listSessions();
+        const resumeCursor = activeSessions[0]?.resumeCursor as
+          | {
+              readonly resume?: string;
+              readonly continuationKey?: string;
+            }
+          | undefined;
+        assert.equal(resumeCursor?.resume, durableSessionId);
+        assert.equal(resumeCursor?.continuationKey, continuationKey);
+      }).pipe(
+        Effect.provideService(Random.Random, makeDeterministicRandomService()),
+        Effect.provide(harness.layer),
+      );
+    },
+  );
+
   it.effect("uses an app-generated Claude session id for fresh sessions", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {
