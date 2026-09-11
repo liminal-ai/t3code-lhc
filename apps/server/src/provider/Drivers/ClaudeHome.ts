@@ -39,7 +39,7 @@ export const makeClaudeEnvironment = Effect.fn("makeClaudeEnvironment")(function
 
 export const makeClaudeContinuationGroupKey = Effect.fn("makeClaudeContinuationGroupKey")(
   function* (
-    config: Pick<ClaudeSettings, "homePath" | "lhc">,
+    config: Pick<ClaudeSettings, "homePath"> & Partial<Pick<ClaudeSettings, "lhc">>,
   ): Effect.fn.Return<string, never, Path.Path> {
     const resolvedHomePath = yield* resolveClaudeHomePath(config);
     const stockKey = `claude:home:${resolvedHomePath}`;
