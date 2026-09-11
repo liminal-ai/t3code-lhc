@@ -9,6 +9,17 @@ thread through the bundled `claude-lhc` sidecar (Node JS entry, plus an
 authenticated `claude` on PATH). Leave LHC off for stock Claude Code.
 `CLAUDE_LHC_SIDECAR` overrides the bundled JS entry if you need to.
 
+LHC uses the same Claude login as stock Claude Code: `CLAUDE_CONFIG_DIR` if set,
+otherwise `~/.claude`. After compact, the sidecar writes a projected native
+transcript into that home and resumes it by UUID. Claude's own memory files in
+the home stay Claude-owned; T3 does not copy tokens or change `HOME`. Claude may
+Read those files; that is not automatic memory injection.
+
+Stock Claude and LHC on the same home are separate continuation identities.
+Turning LHC on or off, or changing the config directory, on an existing instance
+does not convert the stored resume cursor. A mismatch is refused rather than
+silently dropped. Native LHC sessions are titled `[LHC]` plus the T3 thread id.
+
 ## Separate accounts or configurations
 
 Use a separate Claude config directory for each account. This also works for named

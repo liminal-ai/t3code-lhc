@@ -11,6 +11,7 @@ FORK.md
 lhc-release/BASE
 lhc-release/BASE_TAG
 lhc-release/INVENTORY
+lhc-release/NOTES.md
 lhc-release/SYNCS.md
 lhc-release/sidecar.json
 lhc-release/version.json
@@ -50,6 +51,8 @@ apps/web/src/components/settings/ProjectDefaultsSettings.tsx
 apps/web/src/components/settings/settingsSearch.ts
 apps/web/src/hooks/useHandleNewThread.ts
 docs/user/install.md
+docs/user/permission-modes.md
+docs/user/project-settings.md
 docs/user/providers-claude.md
 docs/user/providers-codex.md
 package.json

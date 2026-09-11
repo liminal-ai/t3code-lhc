@@ -3,10 +3,14 @@
 Open **Settings → Projects**. The project and machine pickers start at **All projects** and
 **All machines**.
 
-Change the default model, workspace, automatic pull, agent browser access, or actions for projects that inherit those values.
+Change the default model, workspace, automatic pull, agent browser access, T3 built-in MCP, or actions for projects that inherit those values.
 Select an individual project to override a default. Reset its row to inherit again. Changing a
 default preserves explicit project overrides. Workspace preferences in `t3.json` take precedence
 over machine defaults when the project has no explicit workspace override.
+
+**T3 built-in MCP** attaches T3's preview MCP server. It is on by default. Turning it off applies
+to the whole environment, including projects that enable browser access. Claude's own MCP
+configuration is unchanged.
 
 Select a machine to limit edits to it. **All machines** writes defaults to connected machines;
 offline machines keep their previous values. Mixed values are indicated when selected machines

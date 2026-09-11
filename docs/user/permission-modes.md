@@ -3,8 +3,10 @@
 Permission modes control when an agent needs your approval to act. Choose a mode in the message
 composer; it applies to that thread.
 
-New threads start in **Full access** unless you choose another mode before sending. A thread
-created from another thread inherits its mode.
+New threads start in **Full access** unless this environment configures a different default.
+A configured allowlist hides other modes in the composer. A thread created from another thread
+inherits its mode when that mode is still allowed; otherwise it uses the configured default.
+The composer label is the mode that will be sent. A request for a disallowed mode is rejected.
 
 | Mode                  | Behavior                                                                              |
 | --------------------- | ------------------------------------------------------------------------------------- |
