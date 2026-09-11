@@ -150,6 +150,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
       const scopedLimitNames = yield* makeClaudeScopedLimitNames;
       const adapterOptions = {
         instanceId,
+        continuationKey: continuationGroupKey,
         environment: processEnv,
         modelCatalog,
         scopedLimitNames,

@@ -34,6 +34,12 @@ it.layer(NodeServices.layer)("ClaudeHome", (it) => {
         expect(yield* resolveClaudeHomePath({ homePath })).toBe(resolved);
         expect((yield* makeClaudeEnvironment({ homePath })).CLAUDE_CONFIG_DIR).toBe(resolved);
         expect(yield* makeClaudeContinuationGroupKey({ homePath })).toBe(`claude:home:${resolved}`);
+        expect(yield* makeClaudeContinuationGroupKey({ homePath, lhc: false })).toBe(
+          `claude:home:${resolved}`,
+        );
+        expect(yield* makeClaudeContinuationGroupKey({ homePath, lhc: true })).toBe(
+          `claude:home:${resolved}:lhc`,
+        );
         expect(yield* makeClaudeCapabilitiesCacheKey({ binaryPath: "claude", homePath })).toBe(
           `claude\0${resolved}\0`,
         );
@@ -67,6 +73,12 @@ it.layer(NodeServices.layer)("ClaudeHome", (it) => {
 
         expect(yield* makeClaudeContinuationGroupKey({ homePath: "" })).toBe(
           `claude:home:${resolved}`,
+        );
+        expect(yield* makeClaudeContinuationGroupKey({ homePath: "", lhc: true })).toBe(
+          `claude:home:${resolved}:lhc`,
+        );
+        expect(yield* makeClaudeContinuationGroupKey({ homePath: "", lhc: true })).toBe(
+          yield* makeClaudeContinuationGroupKey({ homePath: "", lhc: true }),
         );
       }),
     );
