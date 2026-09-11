@@ -28,6 +28,7 @@ import * as OrchestrationEngine from "../orchestration/Services/OrchestrationEng
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { OrchestrationLayerLive } from "../orchestration/runtimeLayer.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "../persistence/Layers/Sqlite.ts";
+import { layerTest as serverSettingsLayerTest } from "../serverSettings.ts";
 import * as ProviderSessionRuntime from "../persistence/ProviderSessionRuntime.ts";
 import * as RepositoryIdentityResolver from "../project/RepositoryIdentityResolver.ts";
 import { PersistedServerRuntimeState } from "../serverRuntimeState.ts";
@@ -109,6 +110,7 @@ const withScratchPersistence = <A, E>(
       Layer.mergeAll(OrchestrationLayerLive, ProviderSessionRuntime.layer).pipe(
         Layer.provideMerge(RepositoryIdentityResolver.layer),
         Layer.provideMerge(SqlitePersistenceLayerLive),
+        Layer.provideMerge(serverSettingsLayerTest()),
       ),
       WorkspacePaths.layer,
     ).pipe(Layer.provideMerge(NodeServices.layer), Layer.provide(ServerConfig.layer(config)));

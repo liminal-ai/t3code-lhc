@@ -125,6 +125,27 @@ export const RuntimeMode = Schema.Literals([
 ]);
 export type RuntimeMode = typeof RuntimeMode.Type;
 export const DEFAULT_RUNTIME_MODE: RuntimeMode = "full-access";
+export const ALL_RUNTIME_MODES: ReadonlyArray<RuntimeMode> = RuntimeMode.literals;
+
+/**
+ * Immutable allowed-mode policy for the pure orchestration decider.
+ * `undefined` allowedRuntimeModes means ordinary unrestricted behavior.
+ * An explicit array (including empty) is a configured restriction.
+ */
+export type RuntimeModePolicy = {
+  readonly allowedRuntimeModes?: ReadonlyArray<RuntimeMode>;
+};
+
+export const isRuntimeModePermitted = (
+  mode: RuntimeMode,
+  policy: RuntimeModePolicy | undefined,
+): boolean => {
+  const allowed = policy?.allowedRuntimeModes;
+  if (allowed === undefined) {
+    return true;
+  }
+  return allowed.includes(mode);
+};
 export const ProviderInteractionMode = Schema.Literals(["default", "plan"]);
 export type ProviderInteractionMode = typeof ProviderInteractionMode.Type;
 export const DEFAULT_PROVIDER_INTERACTION_MODE: ProviderInteractionMode = "default";

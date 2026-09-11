@@ -22,18 +22,32 @@ apps/server/src/lhcVersion.ts
 apps/server/src/orchestration/lhcHistoryFixture.ts
 apps/server/src/orchestration/lhcHistoryImport.ts
 apps/server/src/orchestration/lhcImportIds.ts
+apps/server/src/orchestration/runtimeModePolicy.ts
 apps/server/src/provider/Drivers/ClaudeLhcSidecar.ts
 
 # Upstream files touched (additive, minimal)
 apps/server/package.json
 apps/server/src/bin.ts
+apps/server/src/cli/project.ts
 apps/server/src/environment/ServerEnvironment.ts
+apps/server/src/orchestration/Layers/OrchestrationEngine.ts
+apps/server/src/orchestration/commandInvariants.ts
 apps/server/src/orchestration/decider.ts
 apps/server/src/provider/Drivers/ClaudeDriver.ts
 apps/server/src/provider/Drivers/ClaudeHome.ts
+apps/server/src/provider/Drivers/ClaudeSkills.ts
 apps/server/src/provider/Drivers/CodexDriver.ts
 apps/server/src/provider/Drivers/GrokDriver.ts
 apps/server/src/provider/Layers/ClaudeAdapter.ts
+apps/server/src/provider/Layers/ClaudeProvider.ts
+apps/server/src/provider/Layers/ProviderService.ts
+apps/server/src/serverSettings.ts
+apps/web/src/components/ChatView.tsx
+apps/web/src/components/chat/ChatComposer.tsx
+apps/web/src/components/chat/CompactComposerControlsMenu.tsx
+apps/web/src/components/settings/ProjectDefaultsSettings.tsx
+apps/web/src/components/settings/settingsSearch.ts
+apps/web/src/hooks/useHandleNewThread.ts
 docs/user/install.md
 docs/user/providers-claude.md
 docs/user/providers-codex.md
@@ -41,12 +55,14 @@ package.json
 packages/contracts/src/environment.ts
 packages/contracts/src/orchestration.ts
 packages/contracts/src/settings.ts
+packages/shared/src/serverSettings.ts
 
 # Tests: fork-owned
 apps/server/src/cli/thread.test.ts
 apps/server/src/lhcVersion.test.ts
 apps/server/src/orchestration/decider.lhcHistoryImport.test.ts
 apps/server/src/orchestration/lhcHistoryImport.test.ts
+apps/server/src/orchestration/runtimeModePolicy.test.ts
 apps/server/src/provider/Drivers/ClaudeLhcSidecar.test.ts
 apps/server/src/provider/Drivers/CodexMaintenance.test.ts
 apps/server/src/provider/Drivers/GrokMaintenance.test.ts
@@ -65,11 +81,25 @@ lhc-release/RELEASES.md
 .gitignore
 
 # Tests: upstream test files touched
+apps/server/integration/OrchestrationEngineHarness.integration.ts
+apps/server/integration/orphanedProviderSessionStartup.integration.test.ts
+apps/server/src/bin.test.ts
 apps/server/src/environment/ServerEnvironment.test.ts
+apps/server/src/orchestration/Layers/CheckpointReactor.test.ts
+apps/server/src/orchestration/Layers/OrchestrationEngine.test.ts
+apps/server/src/orchestration/Layers/ProjectionPipeline.test.ts
+apps/server/src/orchestration/Layers/ProviderCommandReactor.test.ts
+apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.test.ts
+apps/server/src/project/AgentSessionImporter.test.ts
 apps/server/src/provider/Drivers/ClaudeHome.test.ts
+apps/server/src/provider/Drivers/ClaudeSkills.test.ts
 apps/server/src/provider/Layers/ClaudeAdapter.test.ts
+apps/server/src/provider/Layers/ClaudeCapabilitiesProbe.test.ts
 apps/server/src/provider/Layers/ProviderInstanceRegistryLive.test.ts
+apps/server/src/provider/Layers/ProviderService.test.ts
 apps/server/src/serverSettings.test.ts
 apps/web/src/components/settings/ProviderSettingsForm.test.ts
+apps/web/src/hooks/useHandleNewThread.test.ts
 packages/contracts/src/environment.test.ts
 packages/contracts/src/settings.test.ts
+packages/shared/src/serverSettings.test.ts

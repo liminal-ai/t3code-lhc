@@ -135,6 +135,32 @@ describe("ClaudeSettings auto-compaction", () => {
   });
 });
 
+describe("ServerSettings runtime modes and T3 MCP", () => {
+  it("keeps ordinary defaults when those fields are omitted", () => {
+    const settings = decodeServerSettings({});
+    expect(settings.allowedRuntimeModes).toBeUndefined();
+    expect(settings.defaultRuntimeMode).toBeUndefined();
+    expect(settings.enableT3McpAttachment).toBe(true);
+  });
+
+  it("rejects an empty submitted allowlist at the patch boundary", () => {
+    expect(() => decodeServerSettingsPatch({ allowedRuntimeModes: [] })).toThrow();
+  });
+
+  it("accepts a configured allowlist and default pair", () => {
+    const patch = decodeServerSettingsPatch({
+      allowedRuntimeModes: ["approval-required", "auto-accept-edits"],
+      defaultRuntimeMode: "approval-required",
+    });
+    expect(patch.allowedRuntimeModes).toEqual(["approval-required", "auto-accept-edits"]);
+    expect(patch.defaultRuntimeMode).toBe("approval-required");
+  });
+
+  it("loads an empty persisted allowlist so a broken file can be repaired", () => {
+    expect(decodeServerSettings({ allowedRuntimeModes: [] }).allowedRuntimeModes).toEqual([]);
+  });
+});
+
 describe("ClaudeSettings long-horizon context", () => {
   it("is off unless the instance opts in", () => {
     expect(decodeClaudeSettings({}).lhc).toBe(false);

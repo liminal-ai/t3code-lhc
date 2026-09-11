@@ -1,10 +1,14 @@
 import {
+  ALL_RUNTIME_MODES,
+  DEFAULT_RUNTIME_MODE,
   isProviderDriverKind,
   isProviderAvailable,
   resolveProviderInstanceEnabled,
   type ModelSelection,
   type ProjectId,
   type ProviderDriverKind,
+  type RuntimeMode,
+  type RuntimeModePolicy,
   type ServerProvider,
   ServerSettings,
   type ServerSettingsPatch,
@@ -31,6 +35,81 @@ export function resolveProjectAgentBrowserAccess(
   return (
     settings.projectAgentBrowserAccessOverrides[projectId] ?? settings.enableAgentBrowserAccess
   );
+}
+
+export function t3McpAttachmentEnabled(
+  settings: Pick<ServerSettings, "enableT3McpAttachment">,
+): boolean {
+  return settings.enableT3McpAttachment !== false;
+}
+
+export function effectiveAllowedRuntimeModes(
+  settings: Pick<ServerSettings, "allowedRuntimeModes">,
+): ReadonlyArray<RuntimeMode> {
+  return settings.allowedRuntimeModes ?? ALL_RUNTIME_MODES;
+}
+
+export function effectiveDefaultRuntimeMode(
+  settings: Pick<ServerSettings, "allowedRuntimeModes" | "defaultRuntimeMode">,
+): RuntimeMode {
+  const configured = settings.defaultRuntimeMode ?? DEFAULT_RUNTIME_MODE;
+  return isAllowedRuntimeMode(settings, configured)
+    ? configured
+    : (effectiveAllowedRuntimeModes(settings)[0] ?? DEFAULT_RUNTIME_MODE);
+}
+
+export function isAllowedRuntimeMode(
+  settings: Pick<ServerSettings, "allowedRuntimeModes">,
+  mode: RuntimeMode,
+): boolean {
+  return effectiveAllowedRuntimeModes(settings).includes(mode);
+}
+
+export function runtimeModePolicyFromSettings(
+  settings: Pick<ServerSettings, "allowedRuntimeModes">,
+): RuntimeModePolicy | undefined {
+  return settings.allowedRuntimeModes === undefined
+    ? undefined
+    : { allowedRuntimeModes: settings.allowedRuntimeModes };
+}
+
+export function visibleRuntimeMode(
+  settings: Pick<ServerSettings, "allowedRuntimeModes" | "defaultRuntimeMode">,
+  stored: RuntimeMode | null | undefined,
+): RuntimeMode {
+  if (stored !== undefined && stored !== null && isAllowedRuntimeMode(settings, stored)) {
+    return stored;
+  }
+  return effectiveDefaultRuntimeMode(settings);
+}
+
+export class RuntimeModeSettingsValidationError extends Error {
+  readonly _tag = "RuntimeModeSettingsValidationError";
+  constructor(message: string) {
+    super(message);
+    this.name = "RuntimeModeSettingsValidationError";
+  }
+}
+
+/**
+ * Write-time check of the fully merged pair. Empty configured allowlists and
+ * a default outside the effective allowlist fail. Unset fields keep ordinary
+ * behavior. Does not run on load of an already-persisted file.
+ */
+export function assertValidRuntimeModeSettings(
+  settings: Pick<ServerSettings, "allowedRuntimeModes" | "defaultRuntimeMode">,
+): void {
+  if (settings.allowedRuntimeModes !== undefined && settings.allowedRuntimeModes.length === 0) {
+    throw new RuntimeModeSettingsValidationError(
+      "allowedRuntimeModes must include at least one runtime mode.",
+    );
+  }
+  const effectiveDefault = settings.defaultRuntimeMode ?? DEFAULT_RUNTIME_MODE;
+  if (!isAllowedRuntimeMode(settings, effectiveDefault)) {
+    throw new RuntimeModeSettingsValidationError(
+      `defaultRuntimeMode '${effectiveDefault}' is not in the configured allowedRuntimeModes.`,
+    );
+  }
 }
 
 export function resolveProjectAutoPull(

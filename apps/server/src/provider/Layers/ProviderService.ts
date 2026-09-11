@@ -32,7 +32,10 @@ import {
 import { expandAssistantCitationsForProvider } from "@t3tools/shared/assistantCitations";
 import { causeErrorTag } from "@t3tools/shared/observability";
 import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
-import { resolveProjectAgentBrowserAccess } from "@t3tools/shared/serverSettings";
+import {
+  resolveProjectAgentBrowserAccess,
+  t3McpAttachmentEnabled,
+} from "@t3tools/shared/serverSettings";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -725,6 +728,9 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
   const agentBrowserAccessEnabled = Effect.fn("ProviderService.agentBrowserAccessEnabled")(
     function* (threadId: ThreadId) {
       const settings = yield* serverSettings.getSettings;
+      if (!t3McpAttachmentEnabled(settings)) {
+        return false;
+      }
       if (Object.keys(settings.projectAgentBrowserAccessOverrides).length === 0) {
         return settings.enableAgentBrowserAccess;
       }

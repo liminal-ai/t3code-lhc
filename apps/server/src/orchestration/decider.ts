@@ -11,6 +11,7 @@ import {
   type OrchestrationReadModel,
   type OrchestrationThread,
   type OrchestrationThreadActivity,
+  type RuntimeModePolicy,
 } from "@t3tools/contracts";
 import { compareDateTimeStrings } from "@t3tools/shared/dateTime";
 import * as DateTime from "effect/DateTime";
@@ -38,6 +39,7 @@ import {
 } from "./commandInvariants.ts";
 import { projectEvent } from "./projector.ts";
 import { planLhcHistory } from "./lhcHistoryImport.ts";
+import { rejectForbiddenRuntimeMode } from "./runtimeModePolicy.ts";
 import { threadHasQueuedTurnStart } from "./ThreadSettlementPolicy.ts";
 
 const isScriptRunCommand = Schema.is(SCRIPT_RUN_COMMAND_PATTERN);
@@ -161,9 +163,11 @@ type DecideOrchestrationCommandResult =
 const decideCommandSequence = Effect.fn("decideCommandSequence")(function* ({
   commands,
   readModel,
+  runtimeModePolicy,
 }: {
   readonly commands: ReadonlyArray<OrchestrationCommand>;
   readonly readModel: OrchestrationReadModel;
+  readonly runtimeModePolicy?: RuntimeModePolicy;
 }): Effect.fn.Return<
   ReadonlyArray<PlannedOrchestrationEvent>,
   OrchestrationCommandRejection | PlatformError.PlatformError,
@@ -177,6 +181,7 @@ const decideCommandSequence = Effect.fn("decideCommandSequence")(function* ({
     const decided = yield* decideOrchestrationCommand({
       command: nextCommand,
       readModel: nextReadModel,
+      ...(runtimeModePolicy !== undefined ? { runtimeModePolicy } : {}),
     });
     const nextEvents = Array.isArray(decided) ? decided : [decided];
     for (const nextEvent of nextEvents) {
@@ -196,15 +201,24 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
   command,
   readModel,
   userInputActivity,
+  runtimeModePolicy,
 }: {
   readonly command: OrchestrationCommand;
   readonly readModel: OrchestrationReadModel;
   readonly userInputActivity?: OrchestrationThreadActivity;
+  readonly runtimeModePolicy?: RuntimeModePolicy;
 }): Effect.fn.Return<
   DecideOrchestrationCommandResult,
   OrchestrationCommandRejection | PlatformError.PlatformError,
   Crypto.Crypto
 > {
+  const forbiddenRuntimeMode = rejectForbiddenRuntimeMode(command, readModel, runtimeModePolicy);
+  if (forbiddenRuntimeMode !== undefined) {
+    return yield* new OrchestrationCommandInvariantError({
+      commandType: command.type,
+      detail: forbiddenRuntimeMode,
+    });
+  }
   switch (command.type) {
     case "project.create": {
       yield* requireProjectAbsent({
@@ -317,6 +331,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
       if (activeThreads.length > 0) {
         return yield* decideCommandSequence({
           readModel,
+          ...(runtimeModePolicy !== undefined ? { runtimeModePolicy } : {}),
           commands: [
             ...activeThreads.map(
               (thread): Extract<OrchestrationCommand, { type: "thread.delete" }> => ({
@@ -1250,6 +1265,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         // steers a running agent or resumes an idle session.
         return yield* decideCommandSequence({
           readModel,
+          ...(runtimeModePolicy !== undefined ? { runtimeModePolicy } : {}),
           commands: [
             {
               type: "thread.activity.append",

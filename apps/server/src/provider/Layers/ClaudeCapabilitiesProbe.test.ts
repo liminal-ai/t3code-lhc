@@ -5,6 +5,7 @@ import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
 import * as TestClock from "effect/testing/TestClock";
 import { ClaudeSettings } from "@t3tools/contracts";
+import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as NodeFSP from "node:fs/promises";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
@@ -34,6 +35,7 @@ it("isolates Claude capability probes without dropping workspace setting sources
       FORCE_CODE_TERMINAL: "1",
     },
     cwd: "/workspace/project",
+    enterpriseMcpConfigPresent: false,
   });
 
   assert.deepEqual(options.mcpServers, {});
@@ -52,7 +54,54 @@ it("isolates Claude capability probes without dropping workspace setting sources
   assert.equal(options.env?.CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL, "1");
 });
 
+it("leaves strict MCP mode off when an enterprise MCP config is installed", () => {
+  const options = buildClaudeCapabilitiesProbeQueryOptions({
+    executablePath: "/usr/bin/claude",
+    abortController: new AbortController(),
+    environment: { HOME: "/home/user" },
+    cwd: undefined,
+    enterpriseMcpConfigPresent: true,
+  });
+
+  assert.equal(options.strictMcpConfig, undefined);
+  assert.deepEqual(options.mcpServers, {});
+  assert.equal(options.env?.ENABLE_CLAUDEAI_MCP_SERVERS, "false");
+});
+
 it.layer(NodeServices.layer)("Claude capability probe SDK boundary", (it) => {
+  it.effect("omits strict MCP when an injected filesystem reports managed-mcp.json", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const query = vi.spyOn(ClaudeSdk, "query").mockImplementation(({ options }) => {
+        return {
+          initializationResult: async () => ({
+            account: { email: "dev@example.com", subscriptionType: "pro", tokenSource: "oauth" },
+            commands: [],
+          }),
+          usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET: async () => ({
+            rate_limits_available: false,
+            rate_limits: {},
+          }),
+        } as unknown as ReturnType<typeof ClaudeSdk.query>;
+      });
+      yield* Effect.addFinalizer(() => Effect.sync(() => query.mockRestore()));
+      yield* fs
+        .makeDirectory("/etc/claude-code", { recursive: true })
+        .pipe(Effect.orElseSucceed(() => undefined));
+      const managedPath = "/etc/claude-code/managed-mcp.json";
+      const existsSpy = vi
+        .spyOn(fs, "exists")
+        .mockImplementation((candidate) => Effect.succeed(candidate === managedPath));
+      yield* Effect.addFinalizer(() => Effect.sync(() => existsSpy.mockRestore()));
+      yield* probeClaudeCapabilities(decodeClaudeSettings({ binaryPath: "claude" })).pipe(
+        Effect.provideService(HostProcessPlatform, "linux"),
+      );
+      const options = query.mock.calls[0]?.[0]?.options as { readonly strictMcpConfig?: boolean };
+      assert.equal(options.strictMcpConfig, undefined);
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("serializes strict no-MCP options and still resolves account capabilities", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;

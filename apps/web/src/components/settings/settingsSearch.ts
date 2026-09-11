@@ -70,7 +70,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Project defaults and overrides",
     to: "/settings/projects",
     searchTerms: [
-      "model workspace browser machines projects inheritance automatic pull checkout grouping actions scripts",
+      "model workspace browser machines projects inheritance automatic pull checkout grouping actions scripts t3 mcp",
     ],
   },
   {
@@ -354,6 +354,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Agent browser access",
     to: "/settings/projects",
     searchTerms: ["allow open drive preview tools sessions"],
+  },
+  {
+    id: "t3-mcp-attachment",
+    title: "T3 built-in MCP",
+    to: "/settings/projects",
+    searchTerms: ["t3-code mcp preview tools attachment disable"],
   },
   {
     id: "browser-profiles",

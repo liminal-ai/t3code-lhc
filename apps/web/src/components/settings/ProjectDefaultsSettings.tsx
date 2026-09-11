@@ -96,6 +96,10 @@ export function ProjectDefaultsSettings({
       target.serverConfig?.settings.enableAgentBrowserAccess !==
       serverSettings.enableAgentBrowserAccess,
   );
+  const mixedT3Mcp = targets.some(
+    (target) =>
+      target.serverConfig?.settings.enableT3McpAttachment !== serverSettings.enableT3McpAttachment,
+  );
   const disabled = (key: keyof ServerSettingsPatch) => targets.length === 0 || saving.has(key);
   const mixedAutoPull = targets.some(
     (target) => target.serverConfig?.settings.defaultAutoPull !== serverSettings.defaultAutoPull,
@@ -377,6 +381,54 @@ export function ProjectDefaultsSettings({
                     : mixedBrowser
                       ? "Differs by machine"
                       : serverSettings.enableAgentBrowserAccess
+                        ? "Enabled"
+                        : "Disabled"}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="end" alignItemWithTrigger={false}>
+                <SelectItem value="enabled">Enabled</SelectItem>
+                <SelectItem value="disabled">Disabled</SelectItem>
+              </SelectPopup>
+            </Select>
+          }
+        />
+        <SettingsRow
+          id={searchableSetting("t3-mcp-attachment").id}
+          title="T3 built-in MCP"
+          description="Attach T3's t3-code MCP server (preview tools). Off for the whole environment, including projects that enable browser access. Claude's own MCP configuration is unchanged."
+          resetAction={
+            mixedT3Mcp ||
+            serverSettings.enableT3McpAttachment !==
+              DEFAULT_SERVER_SETTINGS.enableT3McpAttachment ? (
+              <SettingResetButton
+                label="default T3 MCP attachment"
+                disabled={disabled("enableT3McpAttachment")}
+                onClick={() =>
+                  void save({
+                    enableT3McpAttachment: DEFAULT_SERVER_SETTINGS.enableT3McpAttachment,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Select
+              disabled={disabled("enableT3McpAttachment")}
+              value={
+                mixedT3Mcp ? "mixed" : serverSettings.enableT3McpAttachment ? "enabled" : "disabled"
+              }
+              onValueChange={(value) => {
+                if (value === "enabled" || value === "disabled")
+                  void save({ enableT3McpAttachment: value === "enabled" });
+              }}
+            >
+              <SelectTrigger size="sm" aria-label="T3 built-in MCP">
+                <SelectValue>
+                  {targets.length === 0
+                    ? "Unavailable"
+                    : mixedT3Mcp
+                      ? "Differs by machine"
+                      : serverSettings.enableT3McpAttachment
                         ? "Enabled"
                         : "Disabled"}
                 </SelectValue>

@@ -60,6 +60,7 @@ const makePersistedRuntimeLayer = (dbPath: string) => {
   const orchestration = OrchestrationLayerLive.pipe(
     Layer.provideMerge(RepositoryIdentityResolver.layer),
     Layer.provideMerge(persistence),
+    Layer.provideMerge(ServerSettings.layerTest()),
   );
   const directory = ProviderSessionDirectoryLive.pipe(
     Layer.provide(ProviderSessionRuntime.layer),

@@ -576,6 +576,7 @@ const integrationLayer = Layer.mergeAll(
   Layer.provide(RepositoryIdentityResolver.layer),
   Layer.provide(SqlitePersistenceMemory),
   Layer.provideMerge(integrationServerConfig),
+  Layer.provideMerge(ServerSettingsService.layerTest()),
   Layer.provideMerge(NodeServices.layer),
 );
 

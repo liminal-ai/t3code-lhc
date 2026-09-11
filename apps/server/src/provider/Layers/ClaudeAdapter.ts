@@ -21,6 +21,7 @@ import {
   type ModelUsage,
 } from "@anthropic-ai/claude-agent-sdk";
 import { parseCliArgs } from "@t3tools/shared/cliArgs";
+
 import { isWorkspaceImagePreviewPath } from "@t3tools/shared/filePreview";
 import { type ClaudeScopedLimitNames, claudeRateLimitEventToUpdate } from "./claudeUsageLimits.ts";
 import {
@@ -29,6 +30,7 @@ import {
   type CanonicalItemType,
   type CanonicalRequestType,
   type ClaudeSettings,
+  type ServerSettings,
   EventId,
   type ProviderApprovalDecision,
   ProviderDriverKind,
@@ -81,6 +83,7 @@ import * as Stream from "effect/Stream";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
+import { ServerSettingsService } from "../../serverSettings.ts";
 import * as McpProviderSession from "../../mcp/McpProviderSession.ts";
 import { resolveClaudeSdkExecutablePath } from "../Drivers/ClaudeExecutable.ts";
 import {
@@ -127,6 +130,58 @@ type ClaudeSdkEffort = NonNullable<ClaudeQueryOptions["effort"]>;
 function encodeJsonStringForDiagnostics(input: unknown): string | undefined {
   const result = encodeUnknownJsonStringExit(input);
   return Exit.isSuccess(result) ? result.value : undefined;
+}
+
+const PERMISSION_LAUNCH_ARG_KEYS = [
+  "permission-mode",
+  "permissionMode",
+  "dangerously-skip-permissions",
+  "dangerouslySkipPermissions",
+] as const;
+
+function extraArgPresent(flags: Record<string, string | null>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(flags, key);
+}
+
+const runtimeModeToPermission: Record<string, PermissionMode> = {
+  "auto-accept-edits": "acceptEdits",
+  auto: "auto",
+  "full-access": "bypassPermissions",
+};
+
+function requestedPermissionLaunchMode(
+  flags: Record<string, string | null>,
+): PermissionMode | "skip" | undefined {
+  if (
+    extraArgPresent(flags, "dangerously-skip-permissions") ||
+    extraArgPresent(flags, "dangerouslySkipPermissions")
+  ) {
+    return "skip";
+  }
+  const requested = flags["permission-mode"] ?? flags.permissionMode;
+  if (requested === "bypassPermissions" || requested === "acceptEdits" || requested === "auto") {
+    return requested;
+  }
+  return undefined;
+}
+
+function permissionLaunchArgsConflict(
+  flags: Record<string, string | null>,
+  runtimeMode: string,
+  settings: Pick<ServerSettings, "allowedRuntimeModes">,
+): boolean {
+  if (settings.allowedRuntimeModes === undefined) {
+    return false;
+  }
+  const requested = requestedPermissionLaunchMode(flags);
+  if (requested === undefined) {
+    return false;
+  }
+  const expected = runtimeModeToPermission[runtimeMode];
+  if (requested === "skip") {
+    return expected !== "bypassPermissions";
+  }
+  return expected === undefined || requested !== expected;
 }
 
 type PromptQueueItem =
@@ -1955,6 +2010,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       Effect.provideService(Path.Path, path),
     ));
   const serverConfig = yield* ServerConfig;
+  const serverSettingsService = yield* ServerSettingsService;
   const crypto = yield* Crypto.Crypto;
   const claudeEnvironment = yield* makeClaudeEnvironment(claudeSettings, options?.environment).pipe(
     Effect.provideService(Path.Path, path),
@@ -4661,6 +4717,20 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
 
       const claudeBinaryPath = claudeSdkExecutablePath;
       const extraArgs = parseCliArgs(claudeSettings.launchArgs).flags;
+      const serverSettings = yield* serverSettingsService.getSettings.pipe(
+        Effect.catch(() => Effect.succeed(undefined)),
+      );
+      if (
+        serverSettings !== undefined &&
+        permissionLaunchArgsConflict(extraArgs, input.runtimeMode, serverSettings)
+      ) {
+        return yield* new ProviderAdapterRequestError({
+          provider: PROVIDER,
+          method: "startSession",
+          detail:
+            "Claude launch arguments request a permission override that conflicts with the configured access-mode policy.",
+        });
+      }
       const selectedModel =
         input.modelSelection?.instanceId === boundInstanceId ? input.modelSelection : undefined;
       const modelSelection = selectedModel
@@ -4696,11 +4766,6 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         effort,
         modelSelection?.model,
       );
-      const runtimeModeToPermission: Record<string, PermissionMode> = {
-        "auto-accept-edits": "acceptEdits",
-        auto: "auto",
-        "full-access": "bypassPermissions",
-      };
       const permissionMode = runtimeModeToPermission[input.runtimeMode];
       const settings = {
         ...(typeof thinking === "boolean" ? { alwaysThinkingEnabled: thinking } : {}),

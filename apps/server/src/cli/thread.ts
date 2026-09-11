@@ -49,6 +49,7 @@ import { deriveImportedThreadId } from "../orchestration/lhcImportIds.ts";
 import * as OrchestrationEngine from "../orchestration/Services/OrchestrationEngine.ts";
 import { OrchestrationLayerLive } from "../orchestration/runtimeLayer.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "../persistence/Layers/Sqlite.ts";
+import { layerTest as serverSettingsLayerTest } from "../serverSettings.ts";
 import * as ProviderSessionRuntime from "../persistence/ProviderSessionRuntime.ts";
 import * as RepositoryIdentityResolver from "../project/RepositoryIdentityResolver.ts";
 import { isProcessAlive, readPersistedServerRuntimeState } from "../serverRuntimeState.ts";
@@ -68,6 +69,7 @@ const ImportOfflineRuntimeLive = Layer.mergeAll(
   Layer.mergeAll(OrchestrationLayerLive, ProviderSessionRuntime.layer).pipe(
     Layer.provideMerge(RepositoryIdentityResolver.layer),
     Layer.provideMerge(SqlitePersistenceLayerLive),
+    Layer.provideMerge(serverSettingsLayerTest()),
   ),
 );
 
