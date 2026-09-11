@@ -23,13 +23,13 @@ import { FetchHttpClient, HttpClient, HttpClientError } from "effect/unstable/ht
 import * as HttpApiClient from "effect/unstable/httpapi/HttpApiClient";
 
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
-
+import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
 import * as OrchestrationEngine from "../orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { OrchestrationLayerLive } from "../orchestration/runtimeLayer.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "../persistence/Layers/Sqlite.ts";
-import { layerTest as serverSettingsLayerTest } from "../serverSettings.ts";
+import { layer as serverSettingsLayer } from "../serverSettings.ts";
 import * as RepositoryIdentityResolver from "../project/RepositoryIdentityResolver.ts";
 import {
   clearPersistedServerRuntimeState,
@@ -203,7 +203,12 @@ const ProjectCliRuntimeLive = Layer.mergeAll(
   OrchestrationLayerLive.pipe(
     Layer.provideMerge(RepositoryIdentityResolver.layer),
     Layer.provideMerge(SqlitePersistenceLayerLive),
-    Layer.provideMerge(serverSettingsLayerTest()),
+    Layer.provideMerge(
+      serverSettingsLayer.pipe(
+        Layer.provide(ServerSecretStore.layer),
+        Layer.provideMerge(SqlitePersistenceLayerLive),
+      ),
+    ),
   ),
 );
 

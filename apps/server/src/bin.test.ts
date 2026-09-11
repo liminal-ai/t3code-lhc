@@ -38,7 +38,7 @@ import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import { OrchestrationLayerLive } from "./orchestration/runtimeLayer.ts";
-import { layerTest as serverSettingsLayerTest } from "./serverSettings.ts";
+import { layer as serverSettingsLayer } from "./serverSettings.ts";
 import { orchestrationHttpApiLayer } from "./orchestration/http.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "./persistence/Layers/Sqlite.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
@@ -126,7 +126,12 @@ const makeProjectPersistenceLayer = (config: ServerConfig.ServerConfig["Service"
     OrchestrationLayerLive.pipe(
       Layer.provideMerge(RepositoryIdentityResolver.layer),
       Layer.provideMerge(SqlitePersistenceLayerLive),
-      Layer.provideMerge(serverSettingsLayerTest()),
+      Layer.provideMerge(
+        serverSettingsLayer.pipe(
+          Layer.provide(ServerSecretStore.layer),
+          Layer.provideMerge(SqlitePersistenceLayerLive),
+        ),
+      ),
     ),
     WorkspacePaths.layer,
   ).pipe(Layer.provideMerge(NodeServices.layer), Layer.provide(ServerConfig.layer(config)));

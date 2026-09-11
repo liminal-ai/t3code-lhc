@@ -45,6 +45,7 @@ apps/server/src/serverSettings.ts
 apps/web/src/components/ChatView.tsx
 apps/web/src/components/chat/ChatComposer.tsx
 apps/web/src/components/chat/CompactComposerControlsMenu.tsx
+apps/web/src/components/chat/DraftHeroHeadline.tsx
 apps/web/src/components/settings/ProjectDefaultsSettings.tsx
 apps/web/src/components/settings/settingsSearch.ts
 apps/web/src/hooks/useHandleNewThread.ts
