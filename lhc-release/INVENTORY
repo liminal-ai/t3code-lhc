@@ -43,6 +43,16 @@ package.json
 packages/contracts/src/environment.ts
 packages/contracts/src/orchestration.ts
 packages/contracts/src/settings.ts
+apps/server/src/serverSettings.ts
+apps/web/src/components/ChatView.tsx
+apps/web/src/components/chat/ChatComposer.tsx
+apps/web/src/components/chat/CompactComposerControlsMenu.tsx
+apps/web/src/components/chat/DraftHeroHeadline.tsx
+apps/web/src/components/chat/runtimeModeOptions.ts
+apps/web/src/components/settings/ProjectDefaultsSettings.tsx
+apps/web/src/components/settings/settingsSearch.ts
+apps/web/src/hooks/useHandleNewThread.ts
+packages/shared/src/serverSettings.ts
 
 # Tests: fork-owned
 apps/server/src/cli/thread.test.ts
@@ -76,3 +86,6 @@ apps/server/src/provider/Layers/ClaudeCapabilitiesProbe.test.ts
 apps/web/src/components/settings/ProviderSettingsForm.test.ts
 packages/contracts/src/environment.test.ts
 packages/contracts/src/settings.test.ts
+apps/web/src/components/chat/runtimeModeOptions.test.ts
+apps/web/src/hooks/useHandleNewThread.test.ts
+packages/shared/src/serverSettings.test.ts
