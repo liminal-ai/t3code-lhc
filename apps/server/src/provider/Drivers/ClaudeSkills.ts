@@ -120,6 +120,22 @@ export function claudeManagedSettingsPath(
 }
 
 /**
+ * The enterprise MCP config, beside the managed policy file. While it exists
+ * Claude Code gives it exclusive control over MCP servers and refuses
+ * `--strict-mcp-config` outright.
+ */
+export function claudeManagedMcpConfigPath(
+  path: Path.Path,
+  platform: NodeJS.Platform,
+  environment: NodeJS.ProcessEnv,
+): string | undefined {
+  const settingsPath = claudeManagedSettingsPath(path, platform, environment);
+  return settingsPath === undefined
+    ? undefined
+    : path.join(path.dirname(settingsPath), "managed-mcp.json");
+}
+
+/**
  * Settings files Claude Code merges for `skillOverrides`, in increasing
  * precedence: user, project, project-local, then the administrator's managed
  * policy, which wins outright. When the workspace sits inside a git
