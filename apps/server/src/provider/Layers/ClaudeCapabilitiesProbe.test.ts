@@ -72,7 +72,8 @@ it.layer(NodeServices.layer)("Claude capability probe SDK boundary", (it) => {
   it.effect("omits strict MCP when an injected filesystem reports managed-mcp.json", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
-      const query = vi.spyOn(ClaudeSdk, "query").mockImplementation(() => {
+      const path = yield* Path.Path;
+      const query = vi.spyOn(ClaudeSdk, "query").mockImplementation(({ options }) => {
         return {
           initializationResult: async () => ({
             account: { email: "dev@example.com", subscriptionType: "pro", tokenSource: "oauth" },
