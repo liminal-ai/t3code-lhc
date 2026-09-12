@@ -16,7 +16,6 @@ import { useComposerMenuState } from "./useComposerMenuState";
 export const CompactComposerControlsMenu = memo(function CompactComposerControlsMenu(props: {
   interactionMode: ProviderInteractionMode;
   runtimeMode: RuntimeMode;
-  allowedRuntimeModes?: ReadonlyArray<RuntimeMode>;
   showInteractionModeToggle: boolean;
   traitsMenuContent?: ReactNode;
   size?: "sm" | "xs";
@@ -77,20 +76,10 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
             props.onRuntimeModeChange(value as RuntimeMode);
           }}
         >
-          {(
-            props.allowedRuntimeModes ??
-            (["approval-required", "auto-accept-edits", "auto", "full-access"] as const)
-          ).map((mode) => (
-            <MenuRadioItem key={mode} value={mode}>
-              {mode === "approval-required"
-                ? "Supervised"
-                : mode === "auto-accept-edits"
-                  ? "Auto-accept edits"
-                  : mode === "auto"
-                    ? "Auto"
-                    : "Full access"}
-            </MenuRadioItem>
-          ))}
+          <MenuRadioItem value="approval-required">Supervised</MenuRadioItem>
+          <MenuRadioItem value="auto-accept-edits">Auto-accept edits</MenuRadioItem>
+          <MenuRadioItem value="auto">Auto</MenuRadioItem>
+          <MenuRadioItem value="full-access">Full access</MenuRadioItem>
         </MenuRadioGroup>
       </MenuPopup>
     </Menu>

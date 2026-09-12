@@ -56,7 +56,6 @@ import {
   createModelSelection,
   resolvePromptInjectedEffort,
 } from "@t3tools/shared/model";
-import { effectiveAllowedRuntimeModes, visibleRuntimeMode } from "@t3tools/shared/serverSettings";
 import {
   projectScriptCwd,
   projectScriptRuntimeEnv,
@@ -146,6 +145,7 @@ import {
 } from "../proposedPlan";
 import {
   DEFAULT_INTERACTION_MODE,
+  DEFAULT_RUNTIME_MODE,
   DEFAULT_THREAD_TERMINAL_ID,
   MAX_TERMINALS_PER_GROUP,
   type ChatMessage,
@@ -1804,11 +1804,7 @@ export default function ChatView(props: ChatViewProps) {
   // session.lastError. Bump a tick so the banner hides immediately. Mirrors
   // the branch mismatch banner.
   const [, setThreadErrorBannerDismissTick] = useState(0);
-  const runtimeMode = visibleRuntimeMode(
-    settings,
-    composerRuntimeMode ?? activeThread?.runtimeMode ?? localDraftThread?.runtimeMode,
-  );
-  const allowedRuntimeModes = effectiveAllowedRuntimeModes(settings);
+  const runtimeMode = composerRuntimeMode ?? activeThread?.runtimeMode ?? DEFAULT_RUNTIME_MODE;
   const isLocalDraftThread = !isServerThread && localDraftThread !== undefined;
   const canCheckoutPullRequestIntoThread = isLocalDraftThread;
   const activeThreadId = activeThread?.id ?? null;
@@ -2256,7 +2252,7 @@ export default function ChatView(props: ChatViewProps) {
       setLogicalProjectDraftThreadId(logicalProjectKey, activeProjectRef, nextDraftId, {
         threadId: nextThreadId,
         createdAt: new Date().toISOString(),
-        runtimeMode: visibleRuntimeMode(settings, undefined),
+        runtimeMode: DEFAULT_RUNTIME_MODE,
         interactionMode: DEFAULT_INTERACTION_MODE,
         ...input,
       });
@@ -3899,7 +3895,6 @@ export default function ChatView(props: ChatViewProps) {
   const handleRuntimeModeChange = useCallback(
     (mode: RuntimeMode) => {
       if (mode === runtimeMode) return;
-      if (!allowedRuntimeModes.includes(mode)) return;
       setComposerDraftRuntimeMode(composerDraftTarget, mode);
       if (isLocalDraftThread) {
         setDraftThreadContext(composerDraftTarget, { runtimeMode: mode });
@@ -3909,7 +3904,6 @@ export default function ChatView(props: ChatViewProps) {
     [
       isLocalDraftThread,
       runtimeMode,
-      allowedRuntimeModes,
       scheduleComposerFocus,
       composerDraftTarget,
       setComposerDraftRuntimeMode,
@@ -8132,7 +8126,6 @@ export default function ChatView(props: ChatViewProps) {
                             activeTaskSteps={activeComposerTaskSteps}
                             threadSyncPhase={activeEnvironmentUnavailable ? null : threadSyncPhase}
                             runtimeMode={runtimeMode}
-                            allowedRuntimeModes={allowedRuntimeModes}
                             interactionMode={interactionMode}
                             lockedProvider={lockedProvider}
                             providerStatuses={providerStatuses as ServerProvider[]}

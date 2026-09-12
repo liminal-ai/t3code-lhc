@@ -71,12 +71,8 @@ vi.mock("@t3tools/client-runtime/environment", () => ({
   scopeThreadRef: (environmentId: string, threadId: string) => ({ environmentId, threadId }),
 }));
 vi.mock("@t3tools/contracts", () => ({
-  DEFAULT_RUNTIME_MODE: "full-access",
+  DEFAULT_RUNTIME_MODE: "default",
   DEFAULT_SERVER_SETTINGS: {},
-}));
-vi.mock("@t3tools/shared/serverSettings", () => ({
-  visibleRuntimeMode: (_settings: unknown, stored: "approval-required" | "full-access" | null) =>
-    stored ?? "approval-required",
 }));
 vi.mock("@t3tools/shared/threadEnvMode", () => ({
   resolveDefaultThreadEnvMode: (input: {

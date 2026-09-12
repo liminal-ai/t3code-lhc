@@ -13,17 +13,11 @@ import { createModelSelection } from "./model.ts";
 import { resolveProjectScripts, projectScriptsInheritDefaults } from "./projectScripts.ts";
 import {
   applyServerSettingsPatch,
-  assertValidRuntimeModeSettings,
-  effectiveDefaultRuntimeMode,
-  isAllowedRuntimeMode,
   isModelSelectionProviderEnabled,
   parsePersistedServerObservabilitySettings,
   resolveSourceControlWriterModelSelection,
   resolveProjectAgentBrowserAccess,
   resolveProjectAutoPull,
-  RuntimeModeSettingsValidationError,
-  t3McpAttachmentEnabled,
-  visibleRuntimeMode,
 } from "./serverSettings.ts";
 
 describe("serverSettings helpers", () => {
@@ -144,37 +138,6 @@ describe("serverSettings helpers", () => {
     });
     expect(resolveProjectAgentBrowserAccess(enabled, projectId)).toBe(true);
     expect(resolveProjectAgentBrowserAccess(enabled, otherProjectId)).toBe(false);
-  });
-
-  it("keeps ordinary runtime-mode defaults until both fields are configured together", () => {
-    expect(effectiveDefaultRuntimeMode(DEFAULT_SERVER_SETTINGS)).toBe("full-access");
-    expect(isAllowedRuntimeMode(DEFAULT_SERVER_SETTINGS, "full-access")).toBe(true);
-    expect(t3McpAttachmentEnabled(DEFAULT_SERVER_SETTINGS)).toBe(true);
-    const restricted = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
-      allowedRuntimeModes: ["approval-required", "auto-accept-edits"],
-      defaultRuntimeMode: "approval-required",
-    });
-    expect(effectiveDefaultRuntimeMode(restricted)).toBe("approval-required");
-    expect(isAllowedRuntimeMode(restricted, "full-access")).toBe(false);
-    expect(visibleRuntimeMode(restricted, "full-access")).toBe("approval-required");
-    expect(visibleRuntimeMode(restricted, "auto-accept-edits")).toBe("auto-accept-edits");
-    expect(() =>
-      assertValidRuntimeModeSettings(
-        applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
-          allowedRuntimeModes: ["approval-required"],
-          defaultRuntimeMode: "full-access",
-        }),
-      ),
-    ).toThrow(RuntimeModeSettingsValidationError);
-    const laterUnrelated = applyServerSettingsPatch(restricted, { defaultAutoPull: true });
-    expect(() => assertValidRuntimeModeSettings(laterUnrelated)).not.toThrow();
-    expect(
-      t3McpAttachmentEnabled(
-        applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
-          enableT3McpAttachment: false,
-        }),
-      ),
-    ).toBe(false);
   });
 
   it("preserves other projects' boolean overrides across separate updates and resets", () => {

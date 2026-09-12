@@ -100,47 +100,23 @@ function parseSkillFrontmatter(contents: string): SkillFrontmatter {
 }
 
 /**
- * Where an administrator installs Claude Code's machine-wide policy files.
- * Absent on almost every machine, which is why a missing file is the normal
- * case rather than an error. Windows uses Program Files (Claude 2.1.75+);
- * ProgramData is no longer supported.
+ * Where an administrator installs the policy file whose settings outrank every
+ * user and project one. Absent on almost every machine, which is why a missing
+ * file is the normal case rather than an error.
  */
-function claudeManagedConfigDirectory(
-  path: Path.Path,
-  platform: NodeJS.Platform,
-  environment: NodeJS.ProcessEnv,
-): string | undefined {
-  if (platform === "darwin") {
-    return "/Library/Application Support/ClaudeCode";
-  }
-  if (platform === "win32") {
-    const programFiles = environment.ProgramFiles?.trim() || "C:\\Program Files";
-    return path.join(programFiles, "ClaudeCode");
-  }
-  return "/etc/claude-code";
-}
-
-/** The policy file whose settings outrank every user and project one. */
 export function claudeManagedSettingsPath(
   path: Path.Path,
   platform: NodeJS.Platform,
   environment: NodeJS.ProcessEnv,
 ): string | undefined {
-  const directory = claudeManagedConfigDirectory(path, platform, environment);
-  return directory === undefined ? undefined : path.join(directory, "managed-settings.json");
-}
-
-/**
- * The enterprise MCP config. While it exists Claude Code gives it exclusive
- * control over MCP servers and refuses `--strict-mcp-config` outright.
- */
-export function claudeManagedMcpConfigPath(
-  path: Path.Path,
-  platform: NodeJS.Platform,
-  environment: NodeJS.ProcessEnv,
-): string | undefined {
-  const directory = claudeManagedConfigDirectory(path, platform, environment);
-  return directory === undefined ? undefined : path.join(directory, "managed-mcp.json");
+  if (platform === "darwin") {
+    return "/Library/Application Support/ClaudeCode/managed-settings.json";
+  }
+  if (platform === "win32") {
+    const programData = environment.PROGRAMDATA?.trim();
+    return programData ? path.join(programData, "ClaudeCode", "managed-settings.json") : undefined;
+  }
+  return "/etc/claude-code/managed-settings.json";
 }
 
 /**

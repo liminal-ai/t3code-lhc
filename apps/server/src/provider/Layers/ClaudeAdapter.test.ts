@@ -170,7 +170,6 @@ function makeHarness(config?: {
   readonly scopedLimitNames?: ClaudeAdapterLiveOptions["scopedLimitNames"];
   readonly environment?: ClaudeAdapterLiveOptions["environment"];
   readonly continuationKey?: string;
-  readonly serverSettings?: Parameters<typeof ServerSettingsService.layerTest>[0];
 }) {
   const query = new FakeClaudeQuery();
   let createInput:
@@ -216,7 +215,7 @@ function makeHarness(config?: {
           config?.baseDir ?? "/tmp",
         ),
       ),
-      Layer.provideMerge(ServerSettingsService.layerTest(config?.serverSettings ?? {})),
+      Layer.provideMerge(ServerSettingsService.layerTest()),
       Layer.provideMerge(NodeServices.layer),
     ),
     query,
@@ -439,50 +438,6 @@ describe("ClaudeAdapterLive", () => {
       assert.deepEqual(createInput?.options.settingSources, ["user", "project", "local"]);
       assert.equal(createInput?.options.permissionMode, undefined);
       assert.equal(createInput?.options.allowDangerouslySkipPermissions, undefined);
-    }).pipe(
-      Effect.provideService(Random.Random, makeDeterministicRandomService()),
-      Effect.provide(harness.layer),
-    );
-  });
-
-  it.effect("keeps permission launch args when access-mode controls are unset", () => {
-    const harness = makeHarness({
-      claudeConfig: { launchArgs: "--dangerously-skip-permissions --chrome" },
-    });
-    return Effect.gen(function* () {
-      const adapter = yield* ClaudeAdapter;
-      yield* adapter.startSession({
-        threadId: THREAD_ID,
-        provider: ProviderDriverKind.make("claudeAgent"),
-        runtimeMode: "approval-required",
-      });
-      const createInput = harness.getLastCreateQueryInput();
-      assert.equal(createInput?.options.extraArgs?.["dangerously-skip-permissions"], null);
-      assert.equal(createInput?.options.extraArgs?.chrome, null);
-    }).pipe(
-      Effect.provideService(Random.Random, makeDeterministicRandomService()),
-      Effect.provide(harness.layer),
-    );
-  });
-
-  it.effect("rejects a permission launch-arg override that conflicts with configured modes", () => {
-    const harness = makeHarness({
-      claudeConfig: { launchArgs: "--permission-mode acceptEdits --chrome" },
-      serverSettings: { allowedRuntimeModes: ["approval-required"] },
-    });
-    return Effect.gen(function* () {
-      const adapter = yield* ClaudeAdapter;
-      const result = yield* adapter
-        .startSession({
-          threadId: THREAD_ID,
-          provider: ProviderDriverKind.make("claudeAgent"),
-          runtimeMode: "approval-required",
-        })
-        .pipe(Effect.result);
-      assert.equal(result._tag, "Failure");
-      if (result._tag === "Failure") {
-        assert.match(String(result.failure), /permission override/);
-      }
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
       Effect.provide(harness.layer),

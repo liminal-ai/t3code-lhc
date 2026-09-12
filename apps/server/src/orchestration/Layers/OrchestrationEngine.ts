@@ -6,7 +6,6 @@ import type {
   ThreadId,
 } from "@t3tools/contracts";
 import { OrchestrationCommand } from "@t3tools/contracts";
-import { runtimeModePolicyFromSettings } from "@t3tools/shared/serverSettings";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
@@ -50,7 +49,6 @@ import {
   OrchestrationEngineService,
   type OrchestrationEngineShape,
 } from "../Services/OrchestrationEngine.ts";
-import { ServerSettingsService } from "../../serverSettings.ts";
 const isOrchestrationCommandPreviouslyRejectedError = Schema.is(
   OrchestrationCommandPreviouslyRejectedError,
 );
@@ -90,7 +88,6 @@ const makeOrchestrationEngine = Effect.gen(function* () {
   const projectionPipeline = yield* OrchestrationProjectionPipeline;
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
   const threadBackgroundLiveness = yield* ThreadBackgroundLivenessService;
-  const serverSettingsService = yield* ServerSettingsService;
   const crypto = yield* Crypto.Crypto;
 
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
@@ -222,25 +219,12 @@ const makeOrchestrationEngine = Effect.gen(function* () {
           envelope.command.type === "thread.user-input.dismiss"
             ? yield* projectionSnapshotQuery.getUserInputActivity(envelope.command)
             : Option.none();
-        const runtimeModePolicy = runtimeModePolicyFromSettings(
-          yield* serverSettingsService.getSettings.pipe(
-            Effect.mapError(
-              (cause) =>
-                new OrchestrationCommandInvariantError({
-                  commandType: envelope.command.type,
-                  detail: "Could not read server settings for the access-mode policy.",
-                  cause,
-                }),
-            ),
-          ),
-        );
         const eventBase = yield* decideOrchestrationCommand({
           command: envelope.command,
           readModel: commandReadModel,
           ...(Option.isSome(userInputActivity)
             ? { userInputActivity: userInputActivity.value }
             : {}),
-          ...(runtimeModePolicy !== undefined ? { runtimeModePolicy } : {}),
         }).pipe(
           Effect.provideService(Crypto.Crypto, crypto),
           Effect.mapError((cause) =>

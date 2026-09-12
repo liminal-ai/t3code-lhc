@@ -54,17 +54,13 @@ import {
 } from "../Services/ProjectionPipeline.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
 import { ServerConfig } from "../../config.ts";
-import { layerTest as serverSettingsLayerTest } from "../../serverSettings.ts";
 
 const asProjectId = (value: string): ProjectId => ProjectId.make(value);
 const asMessageId = (value: string): MessageId => MessageId.make(value);
 const asTurnId = (value: string): TurnId => TurnId.make(value);
 const asCheckpointRef = (value: string): CheckpointRef => CheckpointRef.make(value);
 
-function makeOrchestrationLayer(
-  databasePath?: string,
-  settings?: Parameters<typeof serverSettingsLayerTest>[0],
-) {
+function makeOrchestrationLayer(databasePath?: string) {
   const persistence = databasePath
     ? makeSqlitePersistenceLive(databasePath)
     : SqlitePersistenceMemory;
@@ -85,16 +81,12 @@ function makeOrchestrationLayer(
     Layer.provide(RepositoryIdentityResolver.layer),
     Layer.provide(persistence),
     Layer.provideMerge(ServerConfigLayer),
-    Layer.provideMerge(serverSettingsLayerTest(settings)),
     Layer.provideMerge(NodeServices.layer),
   );
 }
 
-async function createOrchestrationSystem(
-  databasePath?: string,
-  settings?: Parameters<typeof serverSettingsLayerTest>[0],
-) {
-  const runtime = ManagedRuntime.make(makeOrchestrationLayer(databasePath, settings));
+async function createOrchestrationSystem(databasePath?: string) {
+  const runtime = ManagedRuntime.make(makeOrchestrationLayer(databasePath));
   const engine = await runtime.runPromise(Effect.service(OrchestrationEngineService));
   const snapshotQuery = await runtime.runPromise(Effect.service(ProjectionSnapshotQuery));
   return {
@@ -449,7 +441,6 @@ describe("OrchestrationEngine", () => {
       Layer.provide(ThreadBackgroundLiveness.layer),
       Layer.provide(OrchestrationCommandReceiptRepositoryLive),
       Layer.provide(SqlitePersistenceMemory),
-      Layer.provideMerge(serverSettingsLayerTest()),
       Layer.provideMerge(NodeServices.layer),
     );
 
@@ -1478,7 +1469,6 @@ describe("OrchestrationEngine", () => {
         Layer.provide(RepositoryIdentityResolver.layer),
         Layer.provide(SqlitePersistenceMemory),
         Layer.provideMerge(ServerConfigLayer),
-        Layer.provideMerge(serverSettingsLayerTest()),
         Layer.provideMerge(NodeServices.layer),
       ),
     );
@@ -1586,7 +1576,6 @@ describe("OrchestrationEngine", () => {
         Layer.provide(OrchestrationCommandReceiptRepositoryLive),
         Layer.provide(RepositoryIdentityResolver.layer),
         Layer.provide(SqlitePersistenceMemory),
-        Layer.provideMerge(serverSettingsLayerTest()),
         Layer.provide(NodeServices.layer),
       ),
     );
@@ -1736,7 +1725,6 @@ describe("OrchestrationEngine", () => {
         Layer.provide(OrchestrationCommandReceiptRepositoryLive),
         Layer.provide(RepositoryIdentityResolver.layer),
         Layer.provide(SqlitePersistenceMemory),
-        Layer.provideMerge(serverSettingsLayerTest()),
         Layer.provide(NodeServices.layer),
       ),
     );
@@ -1886,65 +1874,6 @@ describe("OrchestrationEngine", () => {
     ).rejects.toThrow("already exists");
 
     await system.dispose();
-  });
-
-  it("rejects a forbidden runtime-mode.set from configured server settings", async () => {
-    const createdAt = now();
-    const system = await createOrchestrationSystem(undefined, {
-      allowedRuntimeModes: ["approval-required"],
-      defaultRuntimeMode: "approval-required",
-    });
-    const { engine } = system;
-    const projectId = asProjectId("project-mode-policy");
-    const threadId = ThreadId.make("thread-mode-policy");
-    try {
-      await system.run(
-        engine.dispatch({
-          type: "project.create",
-          commandId: CommandId.make("cmd-mode-policy-project"),
-          projectId,
-          title: "Mode policy",
-          workspaceRoot: "/tmp/project-mode-policy",
-          createdAt,
-        }),
-      );
-      await system.run(
-        engine.dispatch({
-          type: "thread.create",
-          commandId: CommandId.make("cmd-mode-policy-thread"),
-          threadId,
-          projectId,
-          title: "mode policy",
-          modelSelection: {
-            instanceId: ProviderInstanceId.make("codex"),
-            model: "gpt-5-codex",
-          },
-          interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-          runtimeMode: "approval-required",
-          branch: null,
-          worktreePath: null,
-          createdAt,
-        }),
-      );
-      await expect(
-        system.run(
-          engine.dispatch({
-            type: "thread.runtime-mode.set",
-            commandId: CommandId.make("cmd-mode-policy-set"),
-            threadId,
-            runtimeMode: "full-access",
-            createdAt,
-          }),
-        ),
-      ).rejects.toThrow(/not allowed by the configured access-mode policy/);
-      const thread = await system.readThread(threadId);
-      expect(thread._tag).toBe("Some");
-      if (thread._tag === "Some") {
-        expect(thread.value.runtimeMode).toBe("approval-required");
-      }
-    } finally {
-      await system.dispose();
-    }
   });
 
   it("replays the accepted receipt for a genuine retry of the same command", async () => {

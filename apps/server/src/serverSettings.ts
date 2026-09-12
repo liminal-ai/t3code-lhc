@@ -51,9 +51,7 @@ import { type DeepPartial, deepMerge } from "@t3tools/shared/Struct";
 import { fromJsonStringPretty, fromLenientJson } from "@t3tools/shared/schemaJson";
 import {
   applyServerSettingsPatch,
-  assertValidRuntimeModeSettings,
   isModelSelectionProviderEnabled,
-  RuntimeModeSettingsValidationError,
 } from "@t3tools/shared/serverSettings";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 
@@ -242,20 +240,6 @@ const makeTest = (overrides: DeepPartial<ServerSettings> = {}) =>
       updateSettings: (patch) =>
         Ref.get(currentSettingsRef).pipe(
           Effect.map((currentSettings) => applyServerSettingsPatch(currentSettings, patch)),
-          Effect.flatMap((merged) =>
-            Effect.try({
-              try: () => {
-                assertValidRuntimeModeSettings(merged);
-                return merged;
-              },
-              catch: (cause) =>
-                new ServerSettingsError({
-                  settingsPath: "<test>",
-                  operation: "validate",
-                  cause,
-                }),
-            }),
-          ),
           Effect.flatMap(normalizeServerSettings),
           Effect.tap((nextSettings) => Ref.set(currentSettingsRef, nextSettings)),
           Effect.map(resolveTextGenerationProvider),
@@ -857,22 +841,10 @@ const make = Effect.gen(function* () {
       writeSemaphore.withPermits(1)(
         Effect.gen(function* () {
           const current = yield* getSettingsFromCache;
-          const merged = applyServerSettingsPatch(current, patch);
-          yield* Effect.try({
-            try: () => {
-              assertValidRuntimeModeSettings(merged);
-            },
-            catch: (cause) =>
-              new ServerSettingsError({
-                settingsPath: settingsPath,
-                operation: "validate",
-                cause:
-                  cause instanceof RuntimeModeSettingsValidationError
-                    ? cause
-                    : new Error(String(cause)),
-              }),
-          });
-          const nextPersisted = yield* persistProviderEnvironmentSecrets(current, merged);
+          const nextPersisted = yield* persistProviderEnvironmentSecrets(
+            current,
+            applyServerSettingsPatch(current, patch),
+          );
           const next = yield* normalizeServerSettings(nextPersisted);
           yield* writeSettingsAtomically(next);
           yield* Cache.set(settingsCache, cacheKey, next);

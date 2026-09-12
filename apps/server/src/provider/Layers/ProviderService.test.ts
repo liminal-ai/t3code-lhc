@@ -4440,7 +4440,6 @@ describe("agent browser access", () => {
     enableAgentBrowserAccess: boolean,
     threadId: ThreadId,
     projectOverride?: boolean,
-    enableT3McpAttachment?: boolean,
   ) =>
     Effect.gen(function* () {
       const issued: Array<ThreadId> = [];
@@ -4513,7 +4512,6 @@ describe("agent browser access", () => {
         Layer.provide(
           ServerSettings.ServerSettingsService.layerTest({
             enableAgentBrowserAccess,
-            ...(enableT3McpAttachment === undefined ? {} : { enableT3McpAttachment }),
             projectAgentBrowserAccessOverrides:
               projectOverride === undefined ? {} : { [projectId]: projectOverride },
           }),
@@ -4591,16 +4589,6 @@ describe("agent browser access", () => {
       const threadId = asThreadId("thread-project-browser-on");
       const issued = yield* startSessionWith(false, threadId, true);
       assert.deepEqual(issued, [threadId]);
-    }).pipe(Effect.provide(NodeServices.layer)),
-  );
-
-  it.effect("withholds T3 MCP even when a project override enables browser access", () =>
-    Effect.gen(function* () {
-      const threadId = asThreadId("thread-t3-mcp-off");
-      revokedThreads.length = 0;
-      const issued = yield* startSessionWith(false, threadId, true, false);
-      assert.deepEqual(issued, []);
-      assert.deepEqual(revokedThreads, [threadId]);
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 });

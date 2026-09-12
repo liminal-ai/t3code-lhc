@@ -16,7 +16,7 @@ import {
   DEFAULT_TEXT_GENERATION_REASONING_EFFORT,
   ProviderOptionSelections,
 } from "./model.ts";
-import { ModelSelection, ProjectScript, RuntimeMode } from "./orchestration.ts";
+import { ModelSelection, ProjectScript } from "./orchestration.ts";
 import { BrowserProfile, BrowserProfileId, DEFAULT_BROWSER_PROFILE_ID } from "./browserProfile.ts";
 import {
   DEFAULT_PREVIEW_APPEARANCE,
@@ -907,23 +907,6 @@ export const ServerSettings = Schema.Struct({
    * between a desktop window and a phone attached to the same server.
    */
   enableAgentBrowserAccess: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
-  /**
-   * Whether T3 injects its built-in `t3-code` MCP server. Off dominates
-   * enableAgentBrowserAccess and project overrides. Claude's own user /
-   * project / managed MCP configuration is unaffected. Default on.
-   */
-  enableT3McpAttachment: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
-  /**
-   * Configured allowlist of composer/server runtime modes. Omitted preserves
-   * all four modes. An explicit empty list is invalid at the write boundary
-   * but still loads so a broken file can be repaired.
-   */
-  allowedRuntimeModes: Schema.optionalKey(Schema.Array(RuntimeMode)),
-  /**
-   * Configured default runtime mode for new drafts. Omitted preserves
-   * full-access. Must be a member of the effective allowlist at write time.
-   */
-  defaultRuntimeMode: Schema.optionalKey(RuntimeMode),
   projectAgentBrowserAccessOverrides: Schema.Record(ProjectId, Schema.Boolean).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
@@ -1101,7 +1084,6 @@ export const ServerSettingsOperation = Schema.Literals([
   "write-secret",
   "write-file",
   "prepare-directory",
-  "validate",
 ]);
 export type ServerSettingsOperation = typeof ServerSettingsOperation.Type;
 
@@ -1203,9 +1185,6 @@ export const ServerSettingsPatch = Schema.Struct({
   enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
   continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
   enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
-  enableT3McpAttachment: Schema.optionalKey(Schema.Boolean),
-  allowedRuntimeModes: Schema.optionalKey(Schema.Array(RuntimeMode).check(Schema.isMinLength(1))),
-  defaultRuntimeMode: Schema.optionalKey(RuntimeMode),
   projectAgentBrowserAccessOverrides: Schema.optionalKey(
     Schema.Record(ProjectId, Schema.NullOr(Schema.Boolean)),
   ),
