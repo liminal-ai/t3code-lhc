@@ -1,91 +1,110 @@
-# Fork footprint: every path that differs between lhc-release/BASE and HEAD,
-# except .github/workflows/ (rule: upstream workflows are deleted, only lhc-*
-# survive; enforced by scripts/check-lhc-touch.sh, not listed here).
 # Checked two ways: a differing path missing here fails, a listed path that no
-# longer differs fails. Keep each group sorted (LC_ALL=C).
-
+# Fork footprint: every path that differs between lhc-release/BASE and HEAD,
+# Fork-owned: archive, install, launcher (slice 4)
+# Fork-owned: identity, Claude LHC sidecar driver, LHC thread import
 # Fork-owned: release process and contract
+# Tests: fork-owned
+# Tests: upstream test files touched
+# Upstream files touched (additive, minimal)
+# except .github/workflows/ (rule: upstream workflows are deleted, only lhc-*
+# longer differs fails. Keep each group sorted (LC_ALL=C).
+# survive; enforced by scripts/check-lhc-touch.sh, not listed here).
 .github/workflows/lhc-quality.yml
 .github/workflows/lhc-release.yml
+.gitignore
 FORK.md
-lhc-release/BASE
-lhc-release/BASE_TAG
-lhc-release/INVENTORY
-lhc-release/NOTES.md
-lhc-release/SYNCS.md
-lhc-release/sidecar.json
-lhc-release/version.json
-scripts/check-lhc-touch.sh
-
-# Fork-owned: identity, Claude LHC sidecar driver, LHC thread import
-apps/server/src/cli/thread.ts
-apps/server/src/lhcVersion.ts
-apps/server/src/orchestration/lhcHistoryFixture.ts
-apps/server/src/orchestration/lhcHistoryImport.ts
-apps/server/src/orchestration/lhcImportIds.ts
-apps/server/src/provider/Drivers/ClaudeLhcSidecar.ts
-
-# Upstream files touched (additive, minimal)
 apps/server/package.json
 apps/server/src/bin.ts
+apps/server/src/cli/migrateClaudeLhcDriver.test.ts
+apps/server/src/cli/thread.test.ts
+apps/server/src/cli/thread.ts
+apps/server/src/environment/ServerEnvironment.test.ts
 apps/server/src/environment/ServerEnvironment.ts
+apps/server/src/git/GitManager.ts
+apps/server/src/lhcVersion.test.ts
+apps/server/src/lhcVersion.ts
+apps/server/src/orchestration/Layers/ProviderCommandReactor.ts
+apps/server/src/orchestration/decider.lhcHistoryImport.test.ts
 apps/server/src/orchestration/decider.ts
+apps/server/src/orchestration/lhcHistoryFixture.ts
+apps/server/src/orchestration/lhcHistoryImport.test.ts
+apps/server/src/orchestration/lhcHistoryImport.ts
+apps/server/src/orchestration/lhcImportIds.ts
 apps/server/src/provider/Drivers/ClaudeDriver.ts
-apps/server/src/provider/Drivers/CodexDriver.ts
-apps/server/src/provider/Drivers/GrokDriver.ts
-apps/server/src/provider/Layers/ClaudeAdapter.ts
+apps/server/src/provider/Drivers/ClaudeLhcDriver.test.ts
+apps/server/src/provider/Drivers/ClaudeLhcDriver.ts
+apps/server/src/provider/Drivers/ClaudeLhcSidecar.test.ts
+apps/server/src/provider/Drivers/ClaudeLhcSidecar.ts
+apps/server/src/provider/Drivers/ClaudeSkills.test.ts
 apps/server/src/provider/Drivers/ClaudeSkills.ts
+apps/server/src/provider/Drivers/CodexDriver.ts
+apps/server/src/provider/Drivers/CodexMaintenance.test.ts
+apps/server/src/provider/Drivers/GrokDriver.ts
+apps/server/src/provider/Drivers/GrokMaintenance.test.ts
+apps/server/src/provider/Layers/ClaudeAdapter.test.ts
+apps/server/src/provider/Layers/ClaudeAdapter.ts
+apps/server/src/provider/Layers/ClaudeCapabilitiesProbe.test.ts
 apps/server/src/provider/Layers/ClaudeProvider.ts
-docs/user/install.md
-docs/user/providers-claude.md
-docs/user/providers-codex.md
-package.json
-packages/contracts/src/environment.ts
-packages/contracts/src/orchestration.ts
-packages/contracts/src/settings.ts
+apps/server/src/provider/Layers/ProviderInstanceRegistryLive.test.ts
+apps/server/src/provider/builtInDrivers.ts
+apps/server/src/provider/providerStatusCache.ts
+apps/server/src/serverSettings.test.ts
 apps/server/src/serverSettings.ts
+apps/server/src/terminal/Manager.ts
+apps/server/src/textGeneration/TextGeneration.ts
 apps/web/src/components/ChatView.tsx
 apps/web/src/components/chat/ChatComposer.tsx
 apps/web/src/components/chat/CompactComposerControlsMenu.tsx
 apps/web/src/components/chat/DraftHeroHeadline.tsx
+apps/web/src/components/chat/TraitsPicker.tsx
+apps/web/src/components/chat/providerIconUtils.ts
+apps/web/src/components/chat/runtimeModeOptions.test.ts
 apps/web/src/components/chat/runtimeModeOptions.ts
 apps/web/src/components/settings/ProjectDefaultsSettings.tsx
+apps/web/src/components/settings/ProviderModelsSection.tsx
+apps/web/src/components/settings/ProviderSettingsForm.test.ts
+apps/web/src/components/settings/customModelEditor.logic.test.ts
+apps/web/src/components/settings/customModelEditor.logic.ts
+apps/web/src/components/settings/providerDriverMeta.test.ts
+apps/web/src/components/settings/providerDriverMeta.ts
 apps/web/src/components/settings/settingsSearch.ts
+apps/web/src/components/usage/UsageLimits.tsx
+apps/web/src/composerDraftStore.ts
+apps/web/src/hooks/useHandleNewThread.test.ts
 apps/web/src/hooks/useHandleNewThread.ts
+apps/web/src/onboarding/providerReadiness.logic.test.ts
+apps/web/src/onboarding/providerReadiness.logic.ts
+docs/user/install.md
+docs/user/providers-claude.md
+docs/user/providers-codex.md
+lhc-release/BASE
+lhc-release/BASE_TAG
+lhc-release/INVENTORY
+lhc-release/NOTES.md
+lhc-release/RELEASES.md
+lhc-release/SYNCS.md
+lhc-release/sidecar.json
+lhc-release/version.json
+package.json
+packages/contracts/src/claudeDriverKinds.test.ts
+packages/contracts/src/claudeDriverKinds.ts
+packages/contracts/src/environment.test.ts
+packages/contracts/src/environment.ts
+packages/contracts/src/index.ts
+packages/contracts/src/model.ts
+packages/contracts/src/orchestration.ts
+packages/contracts/src/settings.test.ts
+packages/contracts/src/settings.ts
+packages/shared/src/serverSettings.test.ts
 packages/shared/src/serverSettings.ts
-
-# Tests: fork-owned
-apps/server/src/cli/thread.test.ts
-apps/server/src/lhcVersion.test.ts
-apps/server/src/orchestration/decider.lhcHistoryImport.test.ts
-apps/server/src/orchestration/lhcHistoryImport.test.ts
-apps/server/src/provider/Drivers/ClaudeLhcSidecar.test.ts
-apps/server/src/provider/Drivers/CodexMaintenance.test.ts
-apps/server/src/provider/Drivers/GrokMaintenance.test.ts
-
-# Fork-owned: archive, install, launcher (slice 4)
 scripts/build-lhc-archive.ts
-scripts/lib/lhc-archive.ts
-scripts/lib/lhc-archive.test.ts
-scripts/lib/lhc-sidecar-stage.ts
-scripts/lib/lhc-store.ts
-scripts/lib/lhc-store.test.ts
+scripts/check-lhc-touch.sh
 scripts/install-lhc.sh
 scripts/install-lhc.test.sh
 scripts/lhc-clean-host-proof.sh
-lhc-release/RELEASES.md
-.gitignore
-
-# Tests: upstream test files touched
-apps/server/src/environment/ServerEnvironment.test.ts
-apps/server/src/provider/Layers/ProviderInstanceRegistryLive.test.ts
-apps/server/src/serverSettings.test.ts
-apps/server/src/provider/Drivers/ClaudeSkills.test.ts
-apps/server/src/provider/Layers/ClaudeAdapter.test.ts
-apps/server/src/provider/Layers/ClaudeCapabilitiesProbe.test.ts
-apps/web/src/components/settings/ProviderSettingsForm.test.ts
-packages/contracts/src/environment.test.ts
-packages/contracts/src/settings.test.ts
-apps/web/src/components/chat/runtimeModeOptions.test.ts
-apps/web/src/hooks/useHandleNewThread.test.ts
-packages/shared/src/serverSettings.test.ts
+scripts/lib/lhc-archive.test.ts
+scripts/lib/lhc-archive.ts
+scripts/lib/lhc-sidecar-stage.ts
+scripts/lib/lhc-store.test.ts
+scripts/lib/lhc-store.ts
+scripts/migrate-claude-lhc-driver.py
