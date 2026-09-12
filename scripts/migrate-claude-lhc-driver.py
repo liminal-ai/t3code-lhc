@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Move the existing "Claude LHC" instance and its threads to the `claude-lhc` driver kind.
 
-Usage: slice4-migrate-claude-lhc.py <userdata dir> [--apply]
+Usage: migrate-claude-lhc-driver.py <userdata dir> [--apply]
 Without --apply: prints the plan and the row counts, changes nothing.
 Run against a COPY first (`--copy-from ~/.t3code/userdata <dest>` makes one with a consistent sqlite backup).
 Requires: server stopped for the target dir (live), python3 only (no sqlite3 CLI needed). Idempotent.

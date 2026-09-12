@@ -1,3 +1,13 @@
+# 0.0.40-lhc.5
+
+Upstream remains v0.0.40. Sidecar pin LHC `5f181303`.
+
+- **Claude LHC is its own driver.** Provider kind `claude-lhc` next to stock Claude. It always runs through the LHC sidecar; the `lhc` checkbox is gone. Existing Claude LHC instances and their threads are moved by `scripts/migrate-claude-lhc-driver.py` (dry run by default, `--apply` writes with a backup). A stock and an LHC instance on the same home never share a resume.
+- **Default LHC instances.** `claude-lhc`, `codex-lhc`, and `grok-lhc` appear automatically while their binary is present (sidecar file, `codex-lhc` or `grok-lhc` on PATH), enabled, with the LHC accent. They are not written to settings; an explicit entry with the same id wins. Stock `codex` and `grok` keep their default binary names.
+- **Access-mode settings.** **Settings → Projects** gains a new-thread default mode and a switch that hides Full access from the pickers. Informational: nothing is enforced at submit.
+- **MCP status warning.** A Claude turn (stock or LHC) whose T3 MCP attachment is not connected logs a warning naming the status.
+- **Removed since lhc.4.** The access-mode allowlist with rejection, the T3 built-in MCP toggle, and the continuation-identity refusal are reverted to v0.0.40 behavior. The Claude LHC login/home behavior below still holds.
+
 # 0.0.40-lhc.4
 
 Upstream remains v0.0.40.
