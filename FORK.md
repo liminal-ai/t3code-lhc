@@ -60,8 +60,51 @@ and trust.
    on inventoried paths; `git rm` every `.github/workflows/*` not prefixed
    `lhc-` (upstream re-adds them; keep them deleted).
 3. Update `BASE`, `BASE_TAG`, `version.json`, `INVENTORY`; run `scripts/check-lhc-touch.sh`,
-   `vp check`, `vpr typecheck`, the tests; record conflicts, checks, and wall
-   time in the sync record. Fast-forward `main` after review.
+   `vp check`, `vpr typecheck`, the tests, and the Claude LHC seam check below;
+   record conflicts, checks, the `claude:` review field, and wall time in the
+   sync record. Fast-forward `main` after review.
+
+## Claude LHC driver (fork-only)
+
+Why a separate kind. `claude-lhc` is its own driver kind next to stock
+`claudeAgent` (`packages/contracts/src/claudeDriverKinds.ts`). A stock and an
+LHC instance on the same home never share a continuation group, LHC threads are
+identifiable by kind in settings and the DB, and the sidecar is always injected
+rather than flag-gated (the pre-lhc.5 `lhc: true` flag is gone; existing rows
+move with `scripts/migrate-claude-lhc-driver.py`).
+
+The seam it depends on. Three optional fields on `ClaudeAdapterOptions` in
+`apps/server/src/provider/Layers/ClaudeAdapter.ts`: `driverKind` (stamped on
+provider events, defaults to `claudeAgent`), `createQuery({ ..., threadId })`
+(replaces the SDK `query` call for the generation), and `threadId` on the
+cursor/resume input. `ClaudeDriver.ts` exports `makeClaudeDriver(spec)`;
+`apps/server/src/provider/Drivers/ClaudeLhcDriver.ts` builds the kind from it
+with `createQuery: makeClaudeLhcCreateQuery` (`ClaudeLhcSidecar.ts`, which owns
+`T3CODE_THREAD_ID` and the sidecar spawn) and its own continuation prefix.
+Runtime, probe, capabilities, text generation, and result/error mapping are
+inherited unchanged.
+
+Per-sync seam check. After the merge step of the drill, `vpr typecheck` and
+
+```
+vp test run apps/server/src/provider/Layers/ClaudeAdapter.test.ts \
+  apps/server/src/provider/Drivers/ClaudeLhcDriver.test.ts \
+  apps/server/src/provider/Drivers/ClaudeLhcSidecar.test.ts
+```
+
+must pass before the sync is recorded. The adapter test injects a fake
+`createQuery` and asserts it receives `threadId`; typecheck fails if upstream
+removes or renames any of the three fields. A failure is a sync blocker, not a
+follow-up.
+
+Review rule. Every upstream commit in the sync range that touches
+`ClaudeAdapter.ts`, `ClaudeProvider.ts`, or `ClaudeDriver.ts` is read for
+behavior the LHC driver must carry (new adapter options, result/error mapping,
+resume/cursor shape, usage reporting) or that bypasses the seam (a second SDK
+`query` call site, a new env line). The outcome goes in the sync record line as
+`claude: <n> commit(s), <carried: ...|none>`. `ClaudeLhcSidecar.ts` is
+fork-owned and outside this rule; an SDK pin bump there is a fork change,
+tracked by the LHC pin line in `lhc-release/RELEASES.md`.
 
 ## Archive, install, launcher (slice 4)
 
@@ -148,6 +191,12 @@ so the UI's update path is inert.
   against releases/latest, requires the launcher to print the promoted identity,
   and requires a second run to no-op ("already at").
 - Record: one line per promoted release in `lhc-release/RELEASES.md`.
+- Release standard (same text as LHC `docs/releases/README.md`; keep the two
+  identical): qualification runs on the exact commit that is promoted, not an
+  earlier candidate; at least one live model turn on the shipped artifact
+  before promotion, fixture-only burn-ins do not count; a bug fix ships only
+  after the bug was reproduced on the pre-fix build, and the release note cites
+  the reproduction.
 
 ## Access-mode settings (fork-only, informational)
 
