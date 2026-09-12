@@ -169,6 +169,7 @@ function makeHarness(config?: {
   readonly baseDir?: string;
   readonly claudeConfig?: Partial<ClaudeSettings>;
   readonly instanceId?: ProviderInstanceId;
+  readonly driverKind?: ProviderDriverKind;
   readonly scopedLimitNames?: ClaudeAdapterLiveOptions["scopedLimitNames"];
   readonly environment?: ClaudeAdapterLiveOptions["environment"];
 }) {
@@ -177,12 +178,14 @@ function makeHarness(config?: {
     | {
         readonly prompt: AsyncIterable<SDKUserMessage>;
         readonly options: ClaudeQueryOptions;
+        readonly threadId: ThreadId;
       }
     | undefined;
 
   const adapterOptions: ClaudeAdapterLiveOptions = {
     ...(config?.environment ? { environment: config.environment } : {}),
     ...(config?.instanceId ? { instanceId: config.instanceId } : {}),
+    ...(config?.driverKind ? { driverKind: config.driverKind } : {}),
     ...(config?.scopedLimitNames ? { scopedLimitNames: config.scopedLimitNames } : {}),
     modelCatalog: Effect.succeed(SYNTHETIC_CLAUDE_MODEL_CATALOG),
     createQuery: (input) => {
@@ -7413,4 +7416,79 @@ describe("ClaudeAdapterLive", () => {
       }),
     );
   });
+});
+
+describe("driver kind identity", () => {
+  const runSession = (driverKind: ProviderDriverKind | undefined) => {
+    const harness = makeHarness(driverKind ? { driverKind } : {});
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "session.exited"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: driverKind ?? ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "auto",
+      });
+      harness.query.emit({
+        type: "system",
+        subtype: "init",
+        apiKeySource: "none",
+        claude_code_version: "test",
+        cwd: "/tmp/claude-adapter-test",
+        tools: [],
+        mcp_servers: [],
+        model: SYNTHETIC_CLAUDE_STANDARD_MODEL,
+        permissionMode: "acceptEdits",
+        slash_commands: [],
+        output_style: "default",
+        skills: [],
+        plugins: [],
+        session_id: "identity-session",
+        uuid: "identity-init",
+      } as unknown as SDKMessage);
+      yield* adapter.sendTurn({
+        threadId: THREAD_ID,
+        input: "hello",
+        modelSelection: createModelSelection(
+          ProviderInstanceId.make("claudeAgent"),
+          SYNTHETIC_CLAUDE_STANDARD_MODEL,
+        ),
+        attachments: [],
+      });
+      yield* adapter.stopSession(THREAD_ID);
+      const events = Array.from(yield* Fiber.join(runtimeEventsFiber));
+      return { adapter, session, events, createInput: harness.getLastCreateQueryInput() };
+    }).pipe(
+      Effect.scoped,
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  };
+
+  it.effect("stamps the configured driver kind on the adapter, the session and every event", () =>
+    Effect.gen(function* () {
+      const kind = ProviderDriverKind.make("claude-lhc");
+      const { adapter, session, events, createInput } = yield* runSession(kind);
+      assert.equal(adapter.provider, kind);
+      assert.equal(session.provider, kind);
+      assert.ok(events.length > 0);
+      assert.deepEqual(
+        events.filter((event) => event.provider !== kind).map((event) => event.type),
+        [],
+      );
+      assert.equal(createInput?.threadId, THREAD_ID);
+    }),
+  );
+
+  it.effect("defaults to the stock Claude kind", () =>
+    Effect.gen(function* () {
+      const { adapter, events } = yield* runSession(undefined);
+      assert.equal(adapter.provider, "claudeAgent");
+      assert.ok(events.every((event) => event.provider === "claudeAgent"));
+    }),
+  );
 });

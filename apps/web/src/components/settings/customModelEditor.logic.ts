@@ -2,6 +2,8 @@ import {
   type ModelCapabilities,
   ProviderDriverKind,
   type ProviderOptionDescriptor,
+  CLAUDE_LHC_DRIVER_KIND,
+  isClaudeDriverKind,
 } from "@t3tools/contracts";
 import { type CustomModelDefinition, createModelCapabilities } from "@t3tools/shared/model";
 
@@ -102,6 +104,9 @@ export const DESCRIPTOR_PRESETS_BY_KIND: Partial<
     },
   ],
 };
+// The LHC kind runs the same Claude child, so it reads the same options.
+DESCRIPTOR_PRESETS_BY_KIND[CLAUDE_LHC_DRIVER_KIND] =
+  DESCRIPTOR_PRESETS_BY_KIND[ProviderDriverKind.make("claudeAgent")];
 
 let nextKey = 0;
 function newEditorKey(): string {
@@ -184,7 +189,7 @@ export function descriptorsFromCapabilities(
   driverKind: ProviderDriverKind | null,
 ): EditorDescriptor[] {
   return (capabilities?.optionDescriptors ?? [])
-    .filter((descriptor) => driverKind !== "claudeAgent" || descriptor.id !== "contextWindow")
+    .filter((descriptor) => !isClaudeDriverKind(driverKind) || descriptor.id !== "contextWindow")
     .map(descriptorToEditor);
 }
 

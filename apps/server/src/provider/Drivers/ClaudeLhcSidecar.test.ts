@@ -19,7 +19,7 @@ const pending = new Map();
 readline.createInterface({ input: process.stdin }).on("line", (line) => {
   const frame = JSON.parse(line);
   if (frame.type === "start") {
-    write({ type: "msg", message: { type: "system", subtype: "init", session_id: frame.options.sessionId, model: frame.options.model, has_callbacks: typeof frame.options.canUseTool, env_marker: frame.options.env && frame.options.env.SIDECAR_TEST_MARKER } });
+    write({ type: "msg", message: { type: "system", subtype: "init", session_id: frame.options.sessionId, model: frame.options.model, has_callbacks: typeof frame.options.canUseTool, env_marker: frame.options.env && frame.options.env.SIDECAR_TEST_MARKER, thread_env: process.env.T3CODE_THREAD_ID } });
   } else if (frame.type === "user") {
     const text = frame.message.message.content[0].text;
     const id = ++reqId;
@@ -70,6 +70,7 @@ describe("ClaudeLhcSidecar", () => {
     const approvals: Array<{ toolName: string; toolUseID: string | undefined }> = [];
     const runtime = createQuery({
       prompt: prompts,
+      threadId: "thread-42" as never,
       options: {
         sessionId: "sess-1",
         model: "claude-sonnet-5",
@@ -89,6 +90,7 @@ describe("ClaudeLhcSidecar", () => {
       session_id: "sess-1",
       model: "claude-sonnet-5",
       env_marker: "present",
+      thread_env: "thread-42",
     });
     expect(init.has_callbacks).toBe("undefined");
 

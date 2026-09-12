@@ -336,3 +336,27 @@ describe("resolveOnboardingProviderInstallCommand", () => {
     );
   });
 });
+
+describe("claude-lhc driver kind", () => {
+  it("logs in through the same claude binary as the stock kind", () => {
+    const provider = {
+      instanceId: ProviderInstanceId.make("claude-lhc"),
+      driver: ProviderDriverKind.make("claude-lhc"),
+    } as unknown as ServerProvider;
+    expect(
+      resolveOnboardingProviderLoginCommand(
+        provider,
+        {
+          ...DEFAULT_SERVER_SETTINGS,
+          providerInstances: {
+            [ProviderInstanceId.make("claude-lhc")]: {
+              driver: ProviderDriverKind.make("claude-lhc"),
+              config: { binaryPath: "/opt/claude-lhc/bin/claude" },
+            },
+          },
+        },
+        "linux",
+      ),
+    ).toBe("/opt/claude-lhc/bin/claude auth login");
+  });
+});

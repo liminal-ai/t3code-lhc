@@ -57,8 +57,8 @@ import { projectLocationFlags, resolveCliAuthConfig } from "./config.ts";
 
 export { deriveImportedThreadId, uuidV5 } from "../orchestration/lhcImportIds.ts";
 
-/** Provider driver that owns claude-lhc sessions; matches live claude-lhc runtime rows. */
-const CLAUDE_PROVIDER_NAME = "claudeAgent";
+/** Driver kind that owns claude-lhc sessions; matches live claude-lhc runtime rows. */
+const CLAUDE_PROVIDER_NAME = "claude-lhc";
 const DEFAULT_PROVIDER_INSTANCE_ID = "claude-lhc";
 /** A full record is thousands of events in one transaction; give the server time. */
 const LIVE_DISPATCH_TIMEOUT = Duration.seconds(120);

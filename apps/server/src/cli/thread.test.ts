@@ -369,8 +369,8 @@ describe("t3 thread import (offline)", () => {
 
         assert.isTrue(Option.isSome(after.runtimeRow));
         const runtimeRow = Option.getOrThrow(after.runtimeRow);
-        assert.strictEqual(runtimeRow.providerName, "claudeAgent");
-        assert.strictEqual(runtimeRow.adapterKey, "claudeAgent");
+        assert.strictEqual(runtimeRow.providerName, "claude-lhc");
+        assert.strictEqual(runtimeRow.adapterKey, "claude-lhc");
         assert.strictEqual(runtimeRow.providerInstanceId, "claude-lhc");
         assert.strictEqual(runtimeRow.runtimeMode, "full-access");
         assert.strictEqual(runtimeRow.status, "stopped");
@@ -681,7 +681,7 @@ describe("t3 thread import (live server)", () => {
         assert.strictEqual(body.threadId, expectedThreadId);
         assert.strictEqual(body.projectId, projectId);
         assert.strictEqual(body.sourceThreadId, SOURCE_THREAD_ID);
-        assert.strictEqual(body.providerName, "claudeAgent");
+        assert.strictEqual(body.providerName, "claude-lhc");
         assert.lengthOf(body.history.turns, 3);
 
         // The server owns the events; locally only the runtime row appears.

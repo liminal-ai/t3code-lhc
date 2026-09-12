@@ -6,6 +6,7 @@ import {
   GrokSettings,
   OpenCodeSettings,
   ProviderDriverKind,
+  CLAUDE_LHC_DRIVER_KIND,
 } from "@t3tools/contracts";
 import type * as Schema from "effect/Schema";
 import {
@@ -53,6 +54,12 @@ const PROVIDER_CLIENT_DEFINITIONS: readonly ProviderClientDefinition[] = [
   {
     value: ProviderDriverKind.make("claudeAgent"),
     label: "Claude",
+    icon: ClaudeAI,
+    settingsSchema: ClaudeSettings,
+  },
+  {
+    value: CLAUDE_LHC_DRIVER_KIND,
+    label: "Claude LHC",
     icon: ClaudeAI,
     settingsSchema: ClaudeSettings,
   },

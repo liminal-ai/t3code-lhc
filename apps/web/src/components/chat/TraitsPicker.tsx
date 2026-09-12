@@ -5,6 +5,7 @@ import {
   type ProviderOptionSelection,
   type ScopedThreadRef,
   type ServerProviderModel,
+  isClaudeDriverKind,
 } from "@t3tools/contracts";
 import {
   applyClaudePromptEffortPrefix,
@@ -597,7 +598,7 @@ export const TraitsPicker = memo(function TraitsPicker({
           "fill-current opacity-80",
           size === "xs"
             ? "text-current"
-            : provider === "claudeAgent"
+            : isClaudeDriverKind(provider)
               ? "text-[#d97757]"
               : "text-foreground",
         )}

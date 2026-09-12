@@ -257,3 +257,24 @@ describe("customModelEditor.logic", () => {
     expect(validateDraft(draft({ descriptors: [select("effort", [{ id: "a" }])] }))).toBeNull();
   });
 });
+
+describe("claude-lhc driver kind", () => {
+  it("shares the Claude option presets and hides the contextWindow descriptor", () => {
+    const lhc = ProviderDriverKind.make("claude-lhc");
+    expect(DESCRIPTOR_PRESETS_BY_KIND[lhc]).toBe(
+      DESCRIPTOR_PRESETS_BY_KIND[ProviderDriverKind.make("claudeAgent")],
+    );
+    const capabilities: ModelCapabilities = {
+      optionDescriptors: [
+        {
+          id: "contextWindow",
+          label: "Context",
+          type: "select",
+          options: [{ id: "1m", label: "1M", isDefault: true }],
+        },
+        { id: "thinking", label: "Thinking", type: "boolean", currentValue: true },
+      ],
+    };
+    expect(descriptorsFromCapabilities(capabilities, lhc).map((d) => d.id)).toEqual(["thinking"]);
+  });
+});

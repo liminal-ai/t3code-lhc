@@ -252,6 +252,32 @@ const makeTest = (overrides: DeepPartial<ServerSettings> = {}) =>
     } satisfies ServerSettingsService["Service"];
   });
 
+/**
+ * Instance ids whose saved Claude config still carries the pre-lhc.5 `lhc`
+ * flag. The flag no longer exists; those instances belong on the
+ * `claude-lhc` driver kind (see scripts/migrate-claude-lhc-driver.py).
+ */
+export function staleClaudeLhcInstanceIds(rawSettings: string): ReadonlyArray<string> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawSettings);
+  } catch {
+    return [];
+  }
+  const instances =
+    parsed && typeof parsed === "object"
+      ? (parsed as { providerInstances?: unknown }).providerInstances
+      : undefined;
+  if (!instances || typeof instances !== "object") return [];
+  return Object.entries(instances as Record<string, unknown>).flatMap(([instanceId, entry]) => {
+    if (!entry || typeof entry !== "object") return [];
+    const { driver, config } = entry as { driver?: unknown; config?: unknown };
+    const lhc =
+      config && typeof config === "object" ? (config as { lhc?: unknown }).lhc : undefined;
+    return driver === "claudeAgent" && lhc === true ? [instanceId] : [];
+  });
+}
+
 export const layerTest = (overrides: DeepPartial<ServerSettings> = {}) =>
   Layer.effect(ServerSettingsService, makeTest(overrides));
 
@@ -464,6 +490,13 @@ const make = Effect.gen(function* () {
         }
       } else {
         settings = decoded.value;
+        const staleLhcInstances = staleClaudeLhcInstanceIds(raw);
+        if (staleLhcInstances.length > 0) {
+          yield* Effect.logWarning(
+            'settings.json still marks Claude instances with "lhc": true; that flag is gone. Move them to the claude-lhc driver with scripts/migrate-claude-lhc-driver.py',
+            { path: settingsPath, instanceIds: staleLhcInstances },
+          );
+        }
         if (isInvalidRuntimeModeDefaults(settings)) {
           yield* Effect.logWarning(
             'settings.json sets hideFullAccess with defaultRuntimeMode "full-access"; using "auto" as the default',

@@ -237,7 +237,6 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         customModels: ["claude-custom"],
         launchArgs: "",
         autoCompactWindow: "",
-        lhc: false,
       });
       assert.deepEqual(
         next.textGenerationModelSelection,
@@ -948,7 +947,6 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         customModels: [],
         launchArgs: "",
         autoCompactWindow: "",
-        lhc: false,
       });
       assert.deepEqual(next.providers.opencode, {
         // OpenCode is disabled by default; this update only touches paths.
@@ -1325,4 +1323,18 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       assert.equal(yield* fileSystem.readFileString(serverConfig.settingsPath), raw);
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
+});
+
+it("names Claude instances whose saved config still carries the retired lhc flag", () => {
+  const raw = JSON.stringify({
+    providerInstances: {
+      "claude-lhc": { driver: "claudeAgent", config: { lhc: true } },
+      "claude-lhc-done": { driver: "claude-lhc", config: {} },
+      claudeAgent: { driver: "claudeAgent", config: { lhc: false } },
+      codex: { driver: "codex", config: { lhc: true } },
+    },
+  });
+  assert.deepEqual(ServerSettingsModule.staleClaudeLhcInstanceIds(raw), ["claude-lhc"]);
+  assert.deepEqual(ServerSettingsModule.staleClaudeLhcInstanceIds("{}"), []);
+  assert.deepEqual(ServerSettingsModule.staleClaudeLhcInstanceIds("not json"), []);
 });

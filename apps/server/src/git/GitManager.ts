@@ -31,6 +31,7 @@ import {
   ModelSelection,
   SourceControlProviderError,
   type SourceControlWritingStyleSettings,
+  isClaudeDriverKind,
 } from "@t3tools/contracts";
 import {
   detectSourceControlProviderFromGitRemoteUrl,
@@ -714,7 +715,7 @@ export const make = Effect.gen(function* () {
             (yield* providerRegistry.getProviders).some(
               (provider) =>
                 provider.instanceId === settings.modelSelection.instanceId &&
-                provider.driver === "claudeAgent",
+                isClaudeDriverKind(provider.driver),
             );
           const claudeInstructions = isClaudeWriter
             ? yield* readRepositoryInstructions(cwd, "CLAUDE.md")

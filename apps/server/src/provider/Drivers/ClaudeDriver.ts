@@ -29,7 +29,7 @@ import { ServerConfig } from "../../config.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { ProviderDriverError } from "../Errors.ts";
-import { makeClaudeAdapter } from "../Layers/ClaudeAdapter.ts";
+import { type ClaudeAdapterLiveOptions, makeClaudeAdapter } from "../Layers/ClaudeAdapter.ts";
 import { makeClaudeScopedLimitNames } from "../Layers/claudeUsageLimits.ts";
 import {
   checkClaudeProviderStatus,
@@ -60,11 +60,10 @@ import {
   type ProviderSnapshotSettings,
 } from "../providerUpdateSettings.ts";
 import { makeClaudeCapabilitiesCacheKey, makeClaudeContinuationGroupKey } from "./ClaudeHome.ts";
-import { makeClaudeLhcCreateQuery } from "./ClaudeLhcSidecar.ts";
 import { discoverClaudeSkills } from "./ClaudeSkills.ts";
 const decodeClaudeSettings = Schema.decodeSync(ClaudeSettings);
 
-const DRIVER_KIND = ProviderDriverKind.make("claudeAgent");
+const STOCK_DRIVER_KIND = ProviderDriverKind.make("claudeAgent");
 const CAPABILITIES_PROBE_TTL = Duration.minutes(5);
 
 function isClaudeNativeCommandPath(commandPath: string): boolean {
@@ -77,7 +76,7 @@ function isClaudeNativeCommandPath(commandPath: string): boolean {
 }
 
 const UPDATE = makePackageManagedProviderMaintenanceResolver({
-  provider: DRIVER_KIND,
+  provider: STOCK_DRIVER_KIND,
   npmPackageName: "@anthropic-ai/claude-code",
   nativeUpdate: {
     args: ["update"],
@@ -97,16 +96,31 @@ export type ClaudeDriverEnv =
   | ServerConfig
   | ServerSettingsService;
 
-export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
-  driverKind: DRIVER_KIND,
+/** What a driver built on the Claude runtime supplies beyond the stock kind. */
+export interface ClaudeDriverSpec {
+  readonly driverKind: ProviderDriverKind;
+  readonly displayName: string;
+  /** Replaces the SDK's `query` for every generation (the sidecar seam). */
+  readonly createQuery?: (input: {
+    readonly environment: NodeJS.ProcessEnv;
+  }) => NonNullable<ClaudeAdapterLiveOptions["createQuery"]>;
+  /** Maps the stock home-keyed continuation key; instances of different kinds must not share one. */
+  readonly continuationGroupKey?: (stockKey: string) => string;
+}
+
+export const makeClaudeDriver = (
+  spec: ClaudeDriverSpec,
+): ProviderDriver<ClaudeSettings, ClaudeDriverEnv> => ({
+  driverKind: spec.driverKind,
   metadata: {
-    displayName: "Claude",
+    displayName: spec.displayName,
     supportsMultipleInstances: true,
   },
   configSchema: ClaudeSettings,
   defaultConfig: (): ClaudeSettings => decodeClaudeSettings({}),
   create: ({ instanceId, displayName, accentColor, environment, enabled, config }) =>
     Effect.gen(function* () {
+      const DRIVER_KIND = spec.driverKind;
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
@@ -136,7 +150,9 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
           Effect.provideService(Path.Path, path),
         ),
       );
-      const continuationGroupKey = yield* makeClaudeContinuationGroupKey(effectiveConfig);
+      const stockContinuationGroupKey = yield* makeClaudeContinuationGroupKey(effectiveConfig);
+      const continuationGroupKey =
+        spec.continuationGroupKey?.(stockContinuationGroupKey) ?? stockContinuationGroupKey;
       const stampIdentity = withInstanceIdentity({
         instanceId,
         driverKind: DRIVER_KIND,
@@ -150,15 +166,12 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
       const scopedLimitNames = yield* makeClaudeScopedLimitNames;
       const adapterOptions = {
         instanceId,
+        driverKind: DRIVER_KIND,
         environment: processEnv,
         modelCatalog,
         scopedLimitNames,
         ...(eventLoggers.native ? { nativeEventLogger: eventLoggers.native } : {}),
-        // LHC instances run the SDK inside the claude-lhc sidecar; the adapter
-        // sees the same message stream and callbacks over stdio.
-        ...(effectiveConfig.lhc
-          ? { createQuery: makeClaudeLhcCreateQuery({ environment: processEnv }) }
-          : {}),
+        ...(spec.createQuery ? { createQuery: spec.createQuery({ environment: processEnv }) } : {}),
       };
       const adapter = yield* makeClaudeAdapter(effectiveConfig, adapterOptions);
       const textGeneration = yield* makeClaudeTextGeneration(
@@ -265,4 +278,9 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
         textGeneration,
       } satisfies ProviderInstance;
     }),
-};
+});
+
+export const ClaudeDriver = makeClaudeDriver({
+  driverKind: STOCK_DRIVER_KIND,
+  displayName: "Claude",
+});

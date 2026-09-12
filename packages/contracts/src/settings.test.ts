@@ -136,16 +136,11 @@ describe("ClaudeSettings auto-compaction", () => {
 });
 
 describe("ClaudeSettings long-horizon context", () => {
-  it("is off unless the instance opts in", () => {
-    expect(decodeClaudeSettings({}).lhc).toBe(false);
-    expect(decodeClaudeSettings({ lhc: true }).lhc).toBe(true);
-  });
-
-  it("accepts the flag at the settings patch boundary", () => {
-    expect(decodeServerSettingsPatch({ providers: { claudeAgent: { lhc: true } } })).toBeDefined();
-    expect(() =>
-      decodeServerSettingsPatch({ providers: { claudeAgent: { lhc: "yes" } } }),
-    ).toThrow();
+  it("no longer has an lhc flag; the claude-lhc driver kind carries it", () => {
+    expect("lhc" in decodeClaudeSettings({})).toBe(false);
+    expect("lhc" in decodeClaudeSettings({ lhc: true })).toBe(false);
+    const patch = decodeServerSettingsPatch({ providers: { claudeAgent: { lhc: true } } });
+    expect("lhc" in (patch.providers?.claudeAgent ?? {})).toBe(false);
   });
 });
 

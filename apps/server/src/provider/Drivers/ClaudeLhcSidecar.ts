@@ -141,7 +141,7 @@ export function makeClaudeLhcCreateQuery(sidecar: ClaudeLhcSidecarOptions): Crea
 }
 
 function startSidecarQuery(
-  input: { readonly prompt: AsyncIterable<SDKUserMessage>; readonly options: ClaudeQueryOptions },
+  input: Parameters<CreateQuery>[0],
   sidecar: ClaudeLhcSidecarOptions,
 ): QueryRuntime {
   const sidecarPath = resolveClaudeLhcSidecarPath(sidecar.environment);
@@ -155,7 +155,13 @@ function startSidecarQuery(
   let closed = false;
   let stdinOpen = true;
 
-  const childEnv: NodeJS.ProcessEnv = { ...sidecar.environment, ...(input.options.env ?? {}) };
+  // T3CODE_THREAD_ID lets lhc-agent resolve a t3code-hosted seat's sender identity;
+  // the sidecar spreads env into the Claude Code child verbatim.
+  const childEnv: NodeJS.ProcessEnv = {
+    ...sidecar.environment,
+    ...(input.options.env ?? {}),
+    T3CODE_THREAD_ID: input.threadId,
+  };
   let child: NodeChildProcess.ChildProcess;
   try {
     child = NodeChildProcess.spawn(process.execPath, [sidecarPath], {
