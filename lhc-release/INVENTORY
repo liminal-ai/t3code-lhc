@@ -45,8 +45,13 @@ apps/server/src/provider/Layers/ClaudeAdapter.test.ts
 apps/server/src/provider/Layers/ClaudeAdapter.ts
 apps/server/src/provider/Layers/ClaudeCapabilitiesProbe.test.ts
 apps/server/src/provider/Layers/ClaudeProvider.ts
+apps/server/src/provider/Layers/ProviderInstanceRegistryHydration.test.ts
+apps/server/src/provider/Layers/ProviderInstanceRegistryHydration.ts
 apps/server/src/provider/Layers/ProviderInstanceRegistryLive.test.ts
+apps/server/src/provider/Layers/ProviderRegistry.test.ts
 apps/server/src/provider/builtInDrivers.ts
+apps/server/src/provider/forkInstanceSeed.test.ts
+apps/server/src/provider/forkInstanceSeed.ts
 apps/server/src/provider/providerStatusCache.ts
 apps/server/src/serverSettings.test.ts
 apps/server/src/serverSettings.ts
