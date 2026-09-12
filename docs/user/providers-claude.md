@@ -14,11 +14,6 @@ LHC uses the same Claude login, settings, and memory as ordinary Claude Code:
 that home. T3 does not copy credentials or change `HOME`. Native LHC sessions
 are titled `[LHC]` plus the T3 thread id.
 
-Stock Claude and LHC on the same home are separate continuation identities.
-Turning LHC on or off, or changing the config directory, on an existing instance
-does not convert or drop a stored resume. Newly recorded resumes that no longer
-match are refused; older unmarked resumes still work.
-
 ## Separate accounts or configurations
 
 Use a separate Claude config directory for each account. This also works for named
