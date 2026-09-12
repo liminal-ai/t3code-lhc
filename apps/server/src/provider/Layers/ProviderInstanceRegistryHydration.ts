@@ -49,10 +49,18 @@ import {
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { BUILT_IN_DRIVERS, type BuiltInDriversEnv } from "../builtInDrivers.ts";
+import {
+  type ForkInstanceSeedAvailability,
+  ForkInstanceSeedAvailabilityState,
+  NO_FORK_INSTANCE_SEEDS,
+  resolveForkInstanceSeedAvailability,
+  seedForkProviderInstances,
+} from "../forkInstanceSeed.ts";
 import { ProviderInstanceRegistry } from "../Services/ProviderInstanceRegistry.ts";
 import { ProviderInstanceRegistryMutator } from "../Services/ProviderInstanceRegistryMutator.ts";
 import { ProviderInstanceRegistryMutableLayer } from "./ProviderInstanceRegistryLive.ts";
@@ -72,6 +80,7 @@ import { ProviderInstanceRegistryMutableLayer } from "./ProviderInstanceRegistry
  */
 export const deriveProviderInstanceConfigMap = (
   settings: ServerSettings,
+  forkSeeds: ForkInstanceSeedAvailability = NO_FORK_INSTANCE_SEEDS,
 ): ProviderInstanceConfigMap => {
   const merged: Record<string, ProviderInstanceConfig> = { ...settings.providerInstances };
 
@@ -100,7 +109,8 @@ export const deriveProviderInstanceConfigMap = (
     };
   }
 
-  return merged as ProviderInstanceConfigMap;
+  // Fork-only: the LHC seeds ride the same ephemeral, explicit-wins rule.
+  return seedForkProviderInstances(merged as ProviderInstanceConfigMap, forkSeeds);
 };
 
 /**
@@ -118,11 +128,17 @@ const SettingsWatcherLive = Layer.effectDiscard(
   Effect.gen(function* () {
     const mutator = yield* ProviderInstanceRegistryMutator;
     const serverSettings = yield* ServerSettingsService;
+    const forkSeedState = yield* ForkInstanceSeedAvailabilityState;
     const settingsChanges = yield* serverSettings.subscribeChanges;
     yield* settingsChanges.pipe(
       Stream.runForEach((next) =>
-        mutator
-          .reconcile(deriveProviderInstanceConfigMap(next))
+        resolveForkInstanceSeedAvailability()
+          .pipe(
+            Effect.tap((forkSeeds) => Ref.set(forkSeedState, forkSeeds)),
+            Effect.flatMap((forkSeeds) =>
+              mutator.reconcile(deriveProviderInstanceConfigMap(next, forkSeeds)),
+            ),
+          )
           .pipe(
             Effect.catchCause((cause) =>
               Effect.logError("ProviderInstanceRegistry reconcile failed", cause),
@@ -160,10 +176,12 @@ export const ProviderInstanceRegistryHydrationLive: Layer.Layer<
     const initialSettings: ServerSettings | undefined = yield* serverSettings.getSettings.pipe(
       Effect.orElseSucceed(() => undefined),
     );
+    const forkSeeds = yield* resolveForkInstanceSeedAvailability();
+    yield* Ref.set(yield* ForkInstanceSeedAvailabilityState, forkSeeds);
     const initialConfigMap =
       initialSettings === undefined
         ? ({} as ProviderInstanceConfigMap)
-        : deriveProviderInstanceConfigMap(initialSettings);
+        : deriveProviderInstanceConfigMap(initialSettings, forkSeeds);
 
     const mutableLayer = ProviderInstanceRegistryMutableLayer({
       drivers: BUILT_IN_DRIVERS,

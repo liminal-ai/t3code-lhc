@@ -162,6 +162,25 @@ already carries that pair is read as `auto` with a warning and left untouched.
 The seed leaves both at their defaults. On a locked-down box set
 `defaultRuntimeMode = auto` and `hideFullAccess = true` in Settings by hand.
 
+## Default instance seed (fork-only)
+
+Stock synthesizes one instance per built-in driver from `providers.<kind>`
+(`codex`, `claudeAgent`, `cursor`, `grok`, `opencode`, `antigravity`), keyed by
+the driver kind, with the schema-default binary name on PATH. The fork adds
+three rows the same way (`apps/server/src/provider/forkInstanceSeed.ts`):
+`claude-lhc` (driver `claude-lhc`), `codex-lhc` (driver `codex`, binary
+`codex-lhc`, update source LHC) and `grok-lhc` (driver `grok`, binary
+`grok-lhc`), each enabled, accent `#7c3aed`, and present only while its fork
+binary resolves: the sidecar file `CLAUDE_LHC_SIDECAR` points at, `codex-lhc`
+and `grok-lhc` on PATH. Seeds are never written to settings.json; an explicit
+`providerInstances` entry with the same id always wins, and editing a seeded
+row in Settings writes it explicit. Availability is probed when settings load
+and on every settings change, exactly when the stock mirror is re-derived. The
+Providers refresh button only re-probes snapshots, so a fork binary installed
+later appears on the next settings save or server restart. The stock `codex`
+and `grok` rows keep their schema-default names, so which build they run is
+whatever `codex` / `grok` resolve to on PATH.
+
 ## Never run here
 
 `npx t3@latest`, `t3 service install` pointing at the npm package, any

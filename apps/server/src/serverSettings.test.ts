@@ -15,6 +15,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Ref from "effect/Ref";
 import * as PlatformError from "effect/PlatformError";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
@@ -22,6 +23,7 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as ServerConfig from "./config.ts";
 import { SqlitePersistenceMemory } from "./persistence/Layers/Sqlite.ts";
+import { ForkInstanceSeedAvailabilityState } from "./provider/forkInstanceSeed.ts";
 import * as ServerSettingsModule from "./serverSettings.ts";
 import { resolveProviderInstanceTerminalEnvironment } from "./terminal/Manager.ts";
 
@@ -1337,4 +1339,32 @@ it("names Claude instances whose saved config still carries the retired lhc flag
   assert.deepEqual(ServerSettingsModule.staleClaudeLhcInstanceIds(raw), ["claude-lhc"]);
   assert.deepEqual(ServerSettingsModule.staleClaudeLhcInstanceIds("{}"), []);
   assert.deepEqual(ServerSettingsModule.staleClaudeLhcInstanceIds("not json"), []);
+});
+
+it.layer(NodeServices.layer)("seeded fork instance terminal environment", (it) => {
+  it.effect(
+    "resolves a terminal environment for a seeded fork instance only while it is available",
+    () =>
+      Effect.gen(function* () {
+        const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+        const path = yield* Path.Path;
+        const resolve = resolveProviderInstanceTerminalEnvironment({
+          serverSettings,
+          path,
+          rawProviderInstanceId: "codex-lhc",
+          env: { PATH: "/usr/bin" },
+        });
+        const missing = yield* resolve.pipe(Effect.flip);
+        assert.equal(missing._tag, "TerminalProviderInstanceNotFoundError");
+
+        const environment = yield* resolve.pipe(
+          Effect.provideService(
+            ForkInstanceSeedAvailabilityState,
+            yield* Ref.make({ "claude-lhc": false, "codex-lhc": true, "grok-lhc": false }),
+          ),
+        );
+        assert.equal(environment.PATH, "/usr/bin");
+        assert.isUndefined(environment.CODEX_HOME);
+      }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
 });
