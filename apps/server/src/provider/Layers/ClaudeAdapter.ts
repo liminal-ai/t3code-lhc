@@ -4841,9 +4841,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         continuationKey: continuationGroupKey,
         continuationConfirmed,
         inboundUnstampedCursor:
-          existingResumeSessionId !== undefined &&
-          resumeState !== undefined &&
-          resumeState.continuationKey === undefined
+          existingResumeSessionId !== undefined && resumeState?.continuationKey === undefined
             ? {
                 ...(threadId ? { threadId } : {}),
                 resume: existingResumeSessionId,

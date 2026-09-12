@@ -45,7 +45,11 @@ import {
   SYNTHETIC_CLAUDE_STANDARD_MODEL,
   SYNTHETIC_CLAUDE_THINKING_MODEL,
 } from "../ClaudeModelCatalog.testFixtures.ts";
-import { ProviderAdapterProcessError, ProviderAdapterValidationError } from "../Errors.ts";
+import {
+  ProviderAdapterProcessError,
+  ProviderAdapterRequestError,
+  ProviderAdapterValidationError,
+} from "../Errors.ts";
 import type { ClaudeAdapterShape } from "../Services/ClaudeAdapter.ts";
 import type { ClaudeScopedLimitNames } from "./claudeUsageLimits.ts";
 import { makeClaudeAdapter, type ClaudeAdapterLiveOptions } from "./ClaudeAdapter.ts";
@@ -6307,14 +6311,9 @@ describe("ClaudeAdapterLive", () => {
         }
         const remaining = yield* adapter.listSessions();
         assert.equal(remaining.length, 1);
-        const remainingSession = remaining[0];
-        assert.equal(remainingSession !== undefined, true);
-        if (remainingSession === undefined) {
-          return;
-        }
-        assert.equal(remainingSession.threadId, existing.threadId);
+        assert.equal(remaining[0]?.threadId, existing.threadId);
         assert.equal(
-          (remainingSession.resumeCursor as { resume?: string }).resume,
+          (remaining[0]?.resumeCursor as { resume?: string }).resume,
           (existing.resumeCursor as { resume?: string }).resume,
         );
       }).pipe(
