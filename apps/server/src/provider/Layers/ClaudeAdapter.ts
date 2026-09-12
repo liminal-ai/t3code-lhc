@@ -83,11 +83,7 @@ import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import * as McpProviderSession from "../../mcp/McpProviderSession.ts";
 import { resolveClaudeSdkExecutablePath } from "../Drivers/ClaudeExecutable.ts";
-import {
-  claudeSignedOutMessage,
-  makeClaudeContinuationGroupKey,
-  makeClaudeEnvironment,
-} from "../Drivers/ClaudeHome.ts";
+import { claudeSignedOutMessage, makeClaudeEnvironment } from "../Drivers/ClaudeHome.ts";
 import { planClaudeSkillDispatch } from "../Drivers/ClaudeSkillDispatch.ts";
 import { discoverClaudeSkills } from "../Drivers/ClaudeSkills.ts";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
@@ -143,7 +139,6 @@ interface ClaudeResumeState {
   readonly resume?: string;
   readonly resumeSessionAt?: string;
   readonly turnCount?: number;
-  readonly continuationKey?: string;
 }
 
 interface ClaudeTurnState {
@@ -305,17 +300,6 @@ interface ClaudeSessionContext {
    * effort override inherit this. */
   currentEffort: string | undefined;
   resumeSessionId: string | undefined;
-  readonly continuationKey: string;
-  continuationConfirmed: boolean;
-  /** Inbound unstamped cursor, kept until system/init acknowledges the native session. */
-  readonly inboundUnstampedCursor:
-    | {
-        readonly threadId?: ThreadId;
-        readonly resume?: string;
-        readonly resumeSessionAt?: string;
-        readonly turnCount?: number;
-      }
-    | undefined;
   readonly pendingApprovals: Map<ApprovalRequestId, PendingApproval>;
   readonly pendingUserInputs: Map<ApprovalRequestId, PendingUserInput>;
   readonly turns: Array<{
@@ -361,8 +345,6 @@ interface ClaudeQueryRuntime extends AsyncIterable<SDKMessage> {
 
 export interface ClaudeAdapterLiveOptions {
   readonly instanceId?: ProviderInstanceId;
-  /** Factory-computed continuation group key; adapter validates/stamps cursors with it. */
-  readonly continuationKey?: string;
   readonly environment?: NodeJS.ProcessEnv;
   readonly createQuery?: (input: {
     readonly prompt: AsyncIterable<SDKUserMessage>;
@@ -872,7 +854,6 @@ function readClaudeResumeState(resumeCursor: unknown): ClaudeResumeState | undef
     sessionId?: unknown;
     resumeSessionAt?: unknown;
     turnCount?: unknown;
-    continuationKey?: unknown;
   };
 
   const threadIdCandidate = typeof cursor.threadId === "string" ? cursor.threadId : undefined;
@@ -890,10 +871,6 @@ function readClaudeResumeState(resumeCursor: unknown): ClaudeResumeState | undef
   const resumeSessionAt =
     typeof cursor.resumeSessionAt === "string" ? cursor.resumeSessionAt : undefined;
   const turnCountValue = typeof cursor.turnCount === "number" ? cursor.turnCount : undefined;
-  const continuationKey =
-    typeof cursor.continuationKey === "string" && cursor.continuationKey.length > 0
-      ? cursor.continuationKey
-      : undefined;
 
   return {
     ...(threadId ? { threadId } : {}),
@@ -902,7 +879,6 @@ function readClaudeResumeState(resumeCursor: unknown): ClaudeResumeState | undef
     ...(turnCountValue !== undefined && Number.isInteger(turnCountValue) && turnCountValue >= 0
       ? { turnCount: turnCountValue }
       : {}),
-    ...(continuationKey ? { continuationKey } : {}),
   };
 }
 
@@ -1949,11 +1925,6 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
   ).pipe(Effect.map((catalog) => scopeClaudeModelCatalog(catalog, claudeSettings.customModels)));
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const continuationGroupKey =
-    options?.continuationKey ??
-    (yield* makeClaudeContinuationGroupKey(claudeSettings).pipe(
-      Effect.provideService(Path.Path, path),
-    ));
   const serverConfig = yield* ServerConfig;
   const crypto = yield* Crypto.Crypto;
   const claudeEnvironment = yield* makeClaudeEnvironment(claudeSettings, options?.environment).pipe(
@@ -2062,29 +2033,22 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     };
   });
 
-  const serializeResumeCursor = (context: ClaudeSessionContext) => {
-    if (!context.continuationConfirmed && context.inboundUnstampedCursor !== undefined) {
-      return { ...context.inboundUnstampedCursor };
-    }
-    const threadId = context.session.threadId;
-    return {
-      ...(threadId ? { threadId } : {}),
-      ...(context.resumeSessionId ? { resume: context.resumeSessionId } : {}),
-      ...(context.lastAssistantUuid ? { resumeSessionAt: context.lastAssistantUuid } : {}),
-      turnCount: context.turns.length,
-      ...(context.continuationConfirmed ? { continuationKey: context.continuationKey } : {}),
-    };
-  };
-
   const updateResumeCursor = Effect.fn("updateResumeCursor")(function* (
     context: ClaudeSessionContext,
   ) {
     const threadId = context.session.threadId;
     if (!threadId) return;
 
+    const resumeCursor = {
+      threadId,
+      ...(context.resumeSessionId ? { resume: context.resumeSessionId } : {}),
+      ...(context.lastAssistantUuid ? { resumeSessionAt: context.lastAssistantUuid } : {}),
+      turnCount: context.turns.length,
+    };
+
     context.session = {
       ...context.session,
-      resumeCursor: serializeResumeCursor(context),
+      resumeCursor,
       updatedAt: yield* nowIso,
     };
   });
@@ -3431,8 +3395,6 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
 
     switch (message.subtype) {
       case "init":
-        context.continuationConfirmed = true;
-        yield* updateResumeCursor(context);
         yield* offerRuntimeEvent({
           ...base,
           type: "session.configured",
@@ -4217,18 +4179,6 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         });
       }
 
-      const resumeState = readClaudeResumeState(input.resumeCursor);
-      if (
-        resumeState?.continuationKey !== undefined &&
-        resumeState.continuationKey !== continuationGroupKey
-      ) {
-        return yield* new ProviderAdapterRequestError({
-          provider: PROVIDER,
-          method: "startSession",
-          detail: `Thread '${input.threadId}' cannot resume because their provider resume state is incompatible.`,
-        });
-      }
-
       const existingContext = sessions.get(input.threadId);
       if (existingContext) {
         yield* Effect.logWarning("claude.session.replacing", {
@@ -4242,13 +4192,11 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       }
 
       const startedAt = yield* nowIso;
+      const resumeState = readClaudeResumeState(input.resumeCursor);
       const threadId = input.threadId;
       const existingResumeSessionId = resumeState?.resume;
       const newSessionId = existingResumeSessionId === undefined ? yield* randomUUIDv4 : undefined;
       const sessionId = existingResumeSessionId ?? newSessionId;
-      const continuationConfirmed =
-        existingResumeSessionId === undefined ||
-        resumeState?.continuationKey === continuationGroupKey;
 
       const runtimeContext = yield* Effect.context<never>();
       const runFork = Effect.runForkWith(runtimeContext);
@@ -4822,7 +4770,6 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           ...(sessionId ? { resume: sessionId } : {}),
           ...(resumeState?.resumeSessionAt ? { resumeSessionAt: resumeState.resumeSessionAt } : {}),
           turnCount: resumeState?.turnCount ?? 0,
-          ...(continuationConfirmed ? { continuationKey: continuationGroupKey } : {}),
         },
         createdAt: startedAt,
         updatedAt: startedAt,
@@ -4838,21 +4785,6 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         currentApiModelId: apiModelId,
         currentEffort: effectiveEffort ?? undefined,
         resumeSessionId: sessionId,
-        continuationKey: continuationGroupKey,
-        continuationConfirmed,
-        inboundUnstampedCursor:
-          existingResumeSessionId !== undefined && resumeState?.continuationKey === undefined
-            ? {
-                ...(threadId ? { threadId } : {}),
-                resume: existingResumeSessionId,
-                ...(resumeState.resumeSessionAt
-                  ? { resumeSessionAt: resumeState.resumeSessionAt }
-                  : {}),
-                ...(resumeState.turnCount !== undefined
-                  ? { turnCount: resumeState.turnCount }
-                  : {}),
-              }
-            : undefined,
         pendingApprovals,
         pendingUserInputs,
         turns: [],

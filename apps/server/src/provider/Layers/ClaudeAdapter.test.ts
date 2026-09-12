@@ -45,11 +45,7 @@ import {
   SYNTHETIC_CLAUDE_STANDARD_MODEL,
   SYNTHETIC_CLAUDE_THINKING_MODEL,
 } from "../ClaudeModelCatalog.testFixtures.ts";
-import {
-  ProviderAdapterProcessError,
-  ProviderAdapterRequestError,
-  ProviderAdapterValidationError,
-} from "../Errors.ts";
+import { ProviderAdapterProcessError, ProviderAdapterValidationError } from "../Errors.ts";
 import type { ClaudeAdapterShape } from "../Services/ClaudeAdapter.ts";
 import type { ClaudeScopedLimitNames } from "./claudeUsageLimits.ts";
 import { makeClaudeAdapter, type ClaudeAdapterLiveOptions } from "./ClaudeAdapter.ts";
@@ -173,7 +169,6 @@ function makeHarness(config?: {
   readonly instanceId?: ProviderInstanceId;
   readonly scopedLimitNames?: ClaudeAdapterLiveOptions["scopedLimitNames"];
   readonly environment?: ClaudeAdapterLiveOptions["environment"];
-  readonly continuationKey?: string;
 }) {
   const query = new FakeClaudeQuery();
   let createInput:
@@ -186,7 +181,6 @@ function makeHarness(config?: {
   const adapterOptions: ClaudeAdapterLiveOptions = {
     ...(config?.environment ? { environment: config.environment } : {}),
     ...(config?.instanceId ? { instanceId: config.instanceId } : {}),
-    ...(config?.continuationKey ? { continuationKey: config.continuationKey } : {}),
     ...(config?.scopedLimitNames ? { scopedLimitNames: config.scopedLimitNames } : {}),
     modelCatalog: Effect.succeed(SYNTHETIC_CLAUDE_MODEL_CATALOG),
     createQuery: (input) => {
@@ -6111,11 +6105,6 @@ describe("ClaudeAdapterLive", () => {
       assert.equal(createInput?.options.resume, "550e8400-e29b-41d4-a716-446655440000");
       assert.equal(createInput?.options.sessionId, undefined);
       assert.equal(createInput?.options.resumeSessionAt, undefined);
-      assert.equal(
-        (session.resumeCursor as { continuationKey?: string }).continuationKey,
-        undefined,
-      );
-      assert.equal((session.resumeCursor as { turnCount?: number }).turnCount, 3);
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
       Effect.provide(harness.layer),
@@ -6203,125 +6192,14 @@ describe("ClaudeAdapterLive", () => {
       const resumeCursor = activeSessions[0]?.resumeCursor as
         | {
             readonly resume?: string;
-            readonly continuationKey?: string;
           }
         | undefined;
       assert.equal(resumeCursor?.resume, durableSessionId);
-      assert.equal(typeof resumeCursor?.continuationKey, "string");
-      assert.match(resumeCursor?.continuationKey ?? "", /^claude:home:/);
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
       Effect.provide(harness.layer),
     );
   });
-
-  it.effect("keeps an unstamped resume cursor unstamped after a pre-init failed turn", () => {
-    const harness = makeHarness();
-    const durableSessionId = "550e8400-e29b-41d4-a716-446655440000";
-    return Effect.gen(function* () {
-      const adapter = yield* ClaudeAdapter;
-      const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
-        Stream.takeUntil((event) => event.type === "turn.completed"),
-        Stream.runCollect,
-        Effect.forkChild,
-      );
-
-      yield* adapter.startSession({
-        threadId: RESUME_THREAD_ID,
-        provider: ProviderDriverKind.make("claudeAgent"),
-        resumeCursor: {
-          threadId: RESUME_THREAD_ID,
-          resume: durableSessionId,
-          resumeSessionAt: "assistant-99",
-          turnCount: 3,
-        },
-        runtimeMode: "full-access",
-      });
-
-      yield* adapter.sendTurn({
-        threadId: RESUME_THREAD_ID,
-        input: "hello",
-        attachments: [],
-      });
-
-      harness.query.emit({
-        type: "result",
-        subtype: "error_during_execution",
-        is_error: true,
-        errors: ["pre-init failure"],
-        session_id: durableSessionId,
-        uuid: "result-pre-init-error",
-      } as unknown as SDKMessage);
-
-      const runtimeEvents = Array.from(yield* Fiber.join(runtimeEventsFiber));
-      assert.equal(
-        runtimeEvents.some((event) => event.type === "turn.completed"),
-        true,
-      );
-      const activeSessions = yield* adapter.listSessions();
-      const resumeCursor = activeSessions[0]?.resumeCursor as
-        | {
-            readonly resume?: string;
-            readonly turnCount?: number;
-            readonly resumeSessionAt?: string;
-            readonly continuationKey?: string;
-          }
-        | undefined;
-      assert.equal(resumeCursor?.resume, durableSessionId);
-      assert.equal(resumeCursor?.turnCount, 3);
-      assert.equal(resumeCursor?.resumeSessionAt, "assistant-99");
-      assert.equal(resumeCursor?.continuationKey, undefined);
-    }).pipe(
-      Effect.provideService(Random.Random, makeDeterministicRandomService()),
-      Effect.provide(harness.layer),
-    );
-  });
-
-  it.effect(
-    "rejects a stamped Claude resume cursor whose continuation identity does not match",
-    () => {
-      const harness = makeHarness({ continuationKey: "claude:home:/tmp/claude-a" });
-      return Effect.gen(function* () {
-        const adapter = yield* ClaudeAdapter;
-        const existing = yield* adapter.startSession({
-          threadId: RESUME_THREAD_ID,
-          provider: ProviderDriverKind.make("claudeAgent"),
-          runtimeMode: "full-access",
-        });
-        const result = yield* adapter
-          .startSession({
-            threadId: RESUME_THREAD_ID,
-            provider: ProviderDriverKind.make("claudeAgent"),
-            resumeCursor: {
-              threadId: RESUME_THREAD_ID,
-              resume: "550e8400-e29b-41d4-a716-446655440000",
-              turnCount: 3,
-              continuationKey: "claude:home:/tmp/claude-b:lhc",
-            },
-            runtimeMode: "full-access",
-          })
-          .pipe(Effect.result);
-        assert.equal(result._tag, "Failure");
-        if (result._tag !== "Failure") {
-          return;
-        }
-        assert.equal(result.failure._tag, "ProviderAdapterRequestError");
-        if (result.failure._tag === "ProviderAdapterRequestError") {
-          assert.match(result.failure.detail, /resume state is incompatible/);
-        }
-        const remaining = yield* adapter.listSessions();
-        assert.equal(remaining.length, 1);
-        assert.equal(remaining[0]?.threadId, existing.threadId);
-        assert.equal(
-          (remaining[0]?.resumeCursor as { resume?: string }).resume,
-          (existing.resumeCursor as { resume?: string }).resume,
-        );
-      }).pipe(
-        Effect.provideService(Random.Random, makeDeterministicRandomService()),
-        Effect.provide(harness.layer),
-      );
-    },
-  );
 
   it.effect("uses an app-generated Claude session id for fresh sessions", () => {
     const harness = makeHarness();
@@ -6339,7 +6217,6 @@ describe("ClaudeAdapterLive", () => {
         threadId?: string;
         resume?: string;
         turnCount?: number;
-        continuationKey?: string;
       };
       assert.equal(sessionResumeCursor.threadId, THREAD_ID);
       assert.equal(typeof sessionResumeCursor.resume, "string");
@@ -6350,8 +6227,6 @@ describe("ClaudeAdapterLive", () => {
       );
       assert.equal(createInput?.options.resume, undefined);
       assert.equal(createInput?.options.sessionId, sessionResumeCursor.resume);
-      assert.equal(typeof sessionResumeCursor.continuationKey, "string");
-      assert.match(sessionResumeCursor.continuationKey ?? "", /^claude:home:/);
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
       Effect.provide(harness.layer),
