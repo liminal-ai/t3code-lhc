@@ -19,6 +19,7 @@ import {
   ProviderRuntimeEvent,
   type RuntimeMode,
   ThreadId,
+  EnvironmentId,
   ProviderInstanceId,
 } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
@@ -27,6 +28,7 @@ import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as McpProviderSession from "../../mcp/McpProviderSession.ts";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Random from "effect/Random";
@@ -7276,6 +7278,139 @@ describe("ClaudeAdapterLive", () => {
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
       Effect.provide(harness.layer),
+    );
+  });
+
+  describe("t3-code MCP status warning", () => {
+    const attachT3Mcp = () =>
+      McpProviderSession.setMcpProviderSession({
+        environmentId: EnvironmentId.make("env-local"),
+        threadId: THREAD_ID,
+        providerSessionId: "mcp-session-1",
+        providerInstanceId: ProviderInstanceId.make("claudeAgent"),
+        endpoint: "http://127.0.0.1:1/mcp",
+        authorizationHeader: "Bearer test",
+      });
+
+    const runInit = (input: {
+      readonly attached: boolean;
+      readonly mcpServers: ReadonlyArray<{ readonly name: string; readonly status: string }>;
+    }) => {
+      const harness = makeHarness();
+      return Effect.gen(function* () {
+        if (input.attached) attachT3Mcp();
+        yield* Effect.addFinalizer(() =>
+          Effect.sync(() => McpProviderSession.clearMcpProviderSession(THREAD_ID)),
+        );
+        const adapter = yield* ClaudeAdapter;
+        const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
+          Stream.takeUntil(
+            (event) =>
+              event.type === "session.state.changed" &&
+              event.payload.reason === "status:mcp-sentinel",
+          ),
+          Stream.runCollect,
+          Effect.forkChild,
+        );
+        yield* adapter.startSession({
+          threadId: THREAD_ID,
+          provider: ProviderDriverKind.make("claudeAgent"),
+          runtimeMode: "auto",
+        });
+        harness.query.emit({
+          type: "system",
+          subtype: "init",
+          apiKeySource: "none",
+          claude_code_version: "test",
+          cwd: "/tmp/claude-adapter-test",
+          tools: [],
+          mcp_servers: input.mcpServers,
+          model: SYNTHETIC_CLAUDE_STANDARD_MODEL,
+          permissionMode: "acceptEdits",
+          slash_commands: [],
+          output_style: "default",
+          skills: [],
+          plugins: [],
+          session_id: "mcp-status-session",
+          uuid: "mcp-status-init",
+        } as unknown as SDKMessage);
+        harness.query.emit({
+          type: "system",
+          subtype: "status",
+          status: "mcp-sentinel",
+          session_id: "mcp-status-session",
+          uuid: "mcp-status-sentinel",
+        } as unknown as SDKMessage);
+        const events = Array.from(yield* Fiber.join(runtimeEventsFiber));
+        assert.ok(events.some((event) => event.type === "session.configured"));
+        return events.filter((event) => event.type === "runtime.warning");
+      }).pipe(
+        Effect.scoped,
+        Effect.provideService(Random.Random, makeDeterministicRandomService()),
+        Effect.provide(harness.layer),
+      );
+    };
+
+    it.effect("warns once when the attached t3-code server reports failed", () =>
+      Effect.gen(function* () {
+        const warnings = yield* runInit({
+          attached: true,
+          mcpServers: [{ name: "t3-code", status: "failed" }],
+        });
+        assert.equal(warnings.length, 1);
+        const warning = warnings[0];
+        assert(warning?.type === "runtime.warning");
+        assert.equal(warning.payload.message, "t3code tools unavailable: failed");
+        assert.deepEqual(warning.payload.detail, {
+          mcpServers: [{ name: "t3-code", status: "failed" }],
+        });
+      }),
+    );
+
+    it.effect("warns on pending, not only failed", () =>
+      Effect.gen(function* () {
+        const warnings = yield* runInit({
+          attached: true,
+          mcpServers: [{ name: "t3-code", status: "pending" }],
+        });
+        assert.equal(warnings.length, 1);
+        const warning = warnings[0];
+        assert(warning?.type === "runtime.warning");
+        assert.equal(warning.payload.message, "t3code tools unavailable: pending");
+      }),
+    );
+
+    it.effect("stays silent when the attached t3-code server is connected", () =>
+      Effect.gen(function* () {
+        const warnings = yield* runInit({
+          attached: true,
+          mcpServers: [
+            { name: "t3-code", status: "connected" },
+            { name: "other", status: "failed" },
+          ],
+        });
+        assert.equal(warnings.length, 0);
+      }),
+    );
+
+    it.effect("warns 'missing' when attached but absent from init", () =>
+      Effect.gen(function* () {
+        const warnings = yield* runInit({ attached: true, mcpServers: [] });
+        assert.equal(warnings.length, 1);
+        const warning = warnings[0];
+        assert(warning?.type === "runtime.warning");
+        assert.equal(warning.payload.message, "t3code tools unavailable: missing");
+      }),
+    );
+
+    it.effect("stays silent when T3 MCP was not attached", () =>
+      Effect.gen(function* () {
+        const warnings = yield* runInit({
+          attached: false,
+          mcpServers: [{ name: "other", status: "failed" }],
+        });
+        assert.equal(warnings.length, 0);
+      }),
     );
   });
 });

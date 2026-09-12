@@ -295,6 +295,8 @@ interface ClaudeSessionContext {
   streamFiber: Fiber.Fiber<void, Error> | undefined;
   readonly startedAt: string;
   readonly basePermissionMode: PermissionMode | undefined;
+  /** T3's own MCP server was attached to this generation as `t3-code`. */
+  readonly t3McpAttached: boolean;
   currentApiModelId: string | undefined;
   /** Effective effort for the session's turns; subagents without an explicit
    * effort override inherit this. */
@@ -3394,7 +3396,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     }
 
     switch (message.subtype) {
-      case "init":
+      case "init": {
         yield* offerRuntimeEvent({
           ...base,
           type: "session.configured",
@@ -3402,7 +3404,19 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
             config: message as Record<string, unknown>,
           },
         });
+        if (context.t3McpAttached) {
+          const mcpServers = message.mcp_servers ?? [];
+          const t3Server = mcpServers.find((server) => server.name === "t3-code");
+          if (t3Server?.status !== "connected") {
+            yield* emitRuntimeWarning(
+              context,
+              `t3code tools unavailable: ${t3Server?.status ?? "missing"}`,
+              { mcpServers },
+            );
+          }
+        }
         return;
+      }
       case "status":
         yield* offerRuntimeEvent({
           ...base,
@@ -4782,6 +4796,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         streamFiber: undefined,
         startedAt,
         basePermissionMode: permissionMode,
+        t3McpAttached: mcpSession !== undefined,
         currentApiModelId: apiModelId,
         currentEffort: effectiveEffort ?? undefined,
         resumeSessionId: sessionId,
