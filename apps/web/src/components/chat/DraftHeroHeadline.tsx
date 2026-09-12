@@ -1,9 +1,7 @@
-import { useAtomValue } from "@effect/atom-react";
 import type { DraftId } from "~/composerDraftStore";
 import { useComposerDraftStore } from "~/composerDraftStore";
-import { DEFAULT_SERVER_SETTINGS, type ScopedProjectRef } from "@t3tools/contracts";
+import type { ScopedProjectRef } from "@t3tools/contracts";
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
-import { visibleRuntimeMode } from "@t3tools/shared/serverSettings";
 import { FolderPlusIcon } from "lucide-react";
 import { useCallback, useMemo } from "react";
 
@@ -11,7 +9,6 @@ import { openCommandPalette } from "~/commandPaletteBus";
 import { useClientSettings } from "~/hooks/useSettings";
 import { hasExplicitComposerModelSelection } from "~/lib/chatThreadActions";
 import { selectProjectGroupingSettings } from "~/logicalProject";
-import { environmentServerConfigsAtom } from "~/state/server";
 import {
   buildSidebarProjectPickerEntries,
   buildSidebarProjectSnapshots,
@@ -47,12 +44,10 @@ export function DraftHeroHeadline({
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const projectSortOrder = useClientSettings((settings) => settings.sidebarProjectSortOrder);
-  const environmentServerConfigs = useAtomValue(environmentServerConfigsAtom);
   const setLogicalProjectDraftThreadId = useComposerDraftStore(
     (store) => store.setLogicalProjectDraftThreadId,
   );
   const getComposerDraft = useComposerDraftStore((store) => store.getComposerDraft);
-  const getDraftThread = useComposerDraftStore((store) => store.getDraftThread);
   const applyStickyState = useComposerDraftStore((store) => store.applyStickyState);
   const setModelSelection = useComposerDraftStore((store) => store.setModelSelection);
   const openAddProject = useCallback(() => openCommandPalette({ open: "add-project" }), []);
@@ -111,60 +106,6 @@ export function DraftHeroHeadline({
   const hasResolvedProject = activeProjectTitle !== null;
   const canChooseProject = projectPickerEntries.length > 0;
   const shouldShowProjectMenu = canChooseProject;
-  const bindDraftToProject = useCallback(
-    (projectKey: string) => {
-      const entry = projectEntryByKey.get(projectKey);
-      if (!entry || projectKey === activeProjectKey) {
-        return;
-      }
-      const project = entry.targetProject;
-      if (!draftId) {
-        return;
-      }
-      // Project selection changes the target of the open draft in
-      // place. The prompt stays in the same composer session, so the
-      // sidebar only gets a draft row if the user later navigates away.
-      const currentDraft = getComposerDraft(draftId);
-      const currentThread = getDraftThread(draftId);
-      const targetSettings =
-        environmentServerConfigs.get(project.environmentId)?.settings ?? DEFAULT_SERVER_SETTINGS;
-      setLogicalProjectDraftThreadId(
-        entry.group.projectKey,
-        scopeProjectRef(project.environmentId, project.id),
-        draftId,
-        {
-          runtimeMode: visibleRuntimeMode(
-            targetSettings,
-            currentDraft?.runtimeMode ?? currentThread?.runtimeMode,
-          ),
-        },
-      );
-      if (!hasExplicitComposerModelSelection(currentDraft)) {
-        applyStickyState(draftId);
-        const defaultModelSelection =
-          project.defaultModelSelection ??
-          environments.find((environment) => environment.environmentId === project.environmentId)
-            ?.serverConfig?.settings.defaultModelSelection;
-        if (defaultModelSelection) {
-          setModelSelection(draftId, defaultModelSelection, {
-            replaceOptions: true,
-          });
-        }
-      }
-    },
-    [
-      activeProjectKey,
-      applyStickyState,
-      draftId,
-      environmentServerConfigs,
-      environments,
-      getComposerDraft,
-      getDraftThread,
-      projectEntryByKey,
-      setLogicalProjectDraftThreadId,
-      setModelSelection,
-    ],
-  );
 
   const projectSelector = shouldShowProjectMenu ? (
     <Menu>
@@ -188,7 +129,38 @@ export function DraftHeroHeadline({
       <MenuPopup align="center" className="max-h-80 min-w-40! w-max max-w-64 overflow-y-auto">
         <MenuRadioGroup
           value={activeProjectKey}
-          onValueChange={(value) => bindDraftToProject(value as string)}
+          onValueChange={(value) => {
+            const entry = projectEntryByKey.get(value as string);
+            if (!entry || value === activeProjectKey) {
+              return;
+            }
+            const project = entry.targetProject;
+            if (!draftId) {
+              return;
+            }
+            // Project selection changes the target of the open draft in
+            // place. The prompt stays in the same composer session, so the
+            // sidebar only gets a draft row if the user later navigates away.
+            const currentDraft = getComposerDraft(draftId);
+            setLogicalProjectDraftThreadId(
+              entry.group.projectKey,
+              scopeProjectRef(project.environmentId, project.id),
+              draftId,
+            );
+            if (!hasExplicitComposerModelSelection(currentDraft)) {
+              applyStickyState(draftId);
+              const defaultModelSelection =
+                project.defaultModelSelection ??
+                environments.find(
+                  (environment) => environment.environmentId === project.environmentId,
+                )?.serverConfig?.settings.defaultModelSelection;
+              if (defaultModelSelection) {
+                setModelSelection(draftId, defaultModelSelection, {
+                  replaceOptions: true,
+                });
+              }
+            }
+          }}
         >
           {projectPickerEntries.map(({ group }) => {
             return (

@@ -43,14 +43,13 @@ import { FetchHttpClient } from "effect/unstable/http";
 import * as HttpApiClient from "effect/unstable/httpapi/HttpApiClient";
 
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
-import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
 import { type LhcHistoryReport, planLhcHistory } from "../orchestration/lhcHistoryImport.ts";
 import { deriveImportedThreadId } from "../orchestration/lhcImportIds.ts";
 import * as OrchestrationEngine from "../orchestration/Services/OrchestrationEngine.ts";
 import { OrchestrationLayerLive } from "../orchestration/runtimeLayer.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "../persistence/Layers/Sqlite.ts";
-import { layer as serverSettingsLayer } from "../serverSettings.ts";
+import { layerTest as serverSettingsLayerTest } from "../serverSettings.ts";
 import * as ProviderSessionRuntime from "../persistence/ProviderSessionRuntime.ts";
 import * as RepositoryIdentityResolver from "../project/RepositoryIdentityResolver.ts";
 import { isProcessAlive, readPersistedServerRuntimeState } from "../serverRuntimeState.ts";
@@ -70,12 +69,7 @@ const ImportOfflineRuntimeLive = Layer.mergeAll(
   Layer.mergeAll(OrchestrationLayerLive, ProviderSessionRuntime.layer).pipe(
     Layer.provideMerge(RepositoryIdentityResolver.layer),
     Layer.provideMerge(SqlitePersistenceLayerLive),
-    Layer.provideMerge(
-      serverSettingsLayer.pipe(
-        Layer.provide(ServerSecretStore.layer),
-        Layer.provideMerge(SqlitePersistenceLayerLive),
-      ),
-    ),
+    Layer.provideMerge(serverSettingsLayerTest()),
   ),
 );
 
