@@ -71,6 +71,7 @@ apps/server/src/environment/ServerEnvironment.test.ts
 apps/server/src/provider/Layers/ProviderInstanceRegistryLive.test.ts
 apps/server/src/serverSettings.test.ts
 apps/server/src/provider/Drivers/ClaudeSkills.test.ts
+apps/server/src/provider/Layers/ClaudeAdapter.test.ts
 apps/server/src/provider/Layers/ClaudeCapabilitiesProbe.test.ts
 apps/web/src/components/settings/ProviderSettingsForm.test.ts
 packages/contracts/src/environment.test.ts
