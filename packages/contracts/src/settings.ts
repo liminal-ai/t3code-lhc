@@ -16,7 +16,7 @@ import {
   DEFAULT_TEXT_GENERATION_REASONING_EFFORT,
   ProviderOptionSelections,
 } from "./model.ts";
-import { ModelSelection, ProjectScript } from "./orchestration.ts";
+import { ModelSelection, ProjectScript, RuntimeMode } from "./orchestration.ts";
 import { BrowserProfile, BrowserProfileId, DEFAULT_BROWSER_PROFILE_ID } from "./browserProfile.ts";
 import {
   DEFAULT_PREVIEW_APPEARANCE,
@@ -906,6 +906,17 @@ export const ServerSettings = Schema.Struct({
    * construction both happen on the server, and the answer must not differ
    * between a desktop window and a phone attached to the same server.
    */
+  /**
+   * Access mode a new thread starts in when nothing is carried over from a
+   * parent thread. Informational for the composer; the provider's own policy
+   * remains the enforcer.
+   */
+  defaultRuntimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(Effect.succeed("auto" as const))),
+  /**
+   * When on, the composer does not offer Full access. Existing threads keep
+   * whatever mode they have; nothing is rejected server-side.
+   */
+  hideFullAccess: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   enableAgentBrowserAccess: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   projectAgentBrowserAccessOverrides: Schema.Record(ProjectId, Schema.Boolean).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
@@ -1075,6 +1086,7 @@ export const resolveProviderInstanceEnabled = (
 
 export const ServerSettingsOperation = Schema.Literals([
   "normalize",
+  "validate",
   "check-exists",
   "read-file",
   "read-provider-history",
@@ -1104,7 +1116,11 @@ export class ServerSettingsError extends Schema.TaggedErrorClass<ServerSettingsE
       this.environmentVariable === undefined
         ? ""
         : ` and environment variable ${this.environmentVariable}`;
-    return `Server settings ${this.operation} failed${provider}${variable} at ${this.settingsPath}.`;
+    const detail =
+      this.operation === "validate" && this.cause instanceof Error && this.cause.message !== ""
+        ? ` ${this.cause.message}`
+        : "";
+    return `Server settings ${this.operation} failed${provider}${variable} at ${this.settingsPath}.${detail}`;
   }
 }
 
@@ -1184,6 +1200,8 @@ export const ServerSettingsPatch = Schema.Struct({
   enableLegacyTokenStreaming: Schema.optionalKey(Schema.Boolean),
   enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
   continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
+  defaultRuntimeMode: Schema.optionalKey(RuntimeMode),
+  hideFullAccess: Schema.optionalKey(Schema.Boolean),
   enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
   projectAgentBrowserAccessOverrides: Schema.optionalKey(
     Schema.Record(ProjectId, Schema.NullOr(Schema.Boolean)),

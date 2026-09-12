@@ -35,6 +35,7 @@ import {
   resolveEnvironmentMachineKind,
   RuntimeMode,
   TerminalOpenInput,
+  DEFAULT_SERVER_SETTINGS,
 } from "@t3tools/contracts";
 import { type EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import { wasBootstrapThreadDeleted } from "@t3tools/client-runtime/errors";
@@ -62,6 +63,7 @@ import {
   resolveProjectScripts,
 } from "@t3tools/shared/projectScripts";
 import { truncate } from "@t3tools/shared/String";
+import { effectiveDefaultRuntimeMode } from "@t3tools/shared/serverSettings";
 import { resolveThreadReferenceCopyTarget } from "@t3tools/shared/threadReference";
 import {
   getTerminalLabel,
@@ -1997,6 +1999,11 @@ export default function ChatView(props: ChatViewProps) {
     [activeThread?.environmentId, activeThread?.projectId],
   );
   const activeProject = useProject(activeProjectRef);
+  const activeEnvironmentServerSettings =
+    environments.find(
+      (environment) => environment.environmentId === activeProjectRef?.environmentId,
+    )?.serverConfig?.settings ?? DEFAULT_SERVER_SETTINGS;
+  const hideFullAccess = activeEnvironmentServerSettings.hideFullAccess;
   const activeProjectScripts = useMemo(
     () => (activeProject ? resolveProjectScripts(settings, activeProject) : []),
     [activeProject, settings],
@@ -2252,7 +2259,7 @@ export default function ChatView(props: ChatViewProps) {
       setLogicalProjectDraftThreadId(logicalProjectKey, activeProjectRef, nextDraftId, {
         threadId: nextThreadId,
         createdAt: new Date().toISOString(),
-        runtimeMode: DEFAULT_RUNTIME_MODE,
+        runtimeMode: effectiveDefaultRuntimeMode(activeEnvironmentServerSettings),
         interactionMode: DEFAULT_INTERACTION_MODE,
         ...input,
       });
@@ -8073,6 +8080,7 @@ export default function ChatView(props: ChatViewProps) {
                         <div ref={attachDraftHeroComposerAnchorRef} className="relative z-10">
                           <ChatComposer
                             composerRef={composerRef}
+                            hideFullAccess={hideFullAccess}
                             composerDraftTarget={composerDraftTarget}
                             environmentId={environmentId}
                             attachmentUploadsCapabilityKnown={attachmentUploadsCapabilityKnown}

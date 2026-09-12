@@ -664,3 +664,15 @@ describe("ServerSettings environment icon", () => {
     expect(encodeServerSettings(linuxSettings).environmentIcon).toBe("linux");
   });
 });
+
+describe("ServerSettings runtime-mode defaults", () => {
+  it("defaults to auto with Full access offered and accepts both patch keys", () => {
+    const settings = decodeServerSettings({});
+    expect(settings.defaultRuntimeMode).toBe("auto");
+    expect(settings.hideFullAccess).toBe(false);
+    expect(
+      decodeServerSettingsPatch({ defaultRuntimeMode: "approval-required", hideFullAccess: true }),
+    ).toMatchObject({ defaultRuntimeMode: "approval-required", hideFullAccess: true });
+    expect(() => decodeServerSettingsPatch({ defaultRuntimeMode: "yolo" })).toThrow();
+  });
+});

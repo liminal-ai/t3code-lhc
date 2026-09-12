@@ -356,6 +356,18 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["allow open drive preview tools sessions"],
   },
   {
+    id: "default-runtime-mode",
+    title: "Default access mode",
+    to: "/settings/projects",
+    searchTerms: ["new thread supervised auto accept edits full access permission mode default"],
+  },
+  {
+    id: "offer-full-access",
+    title: "Offer Full access",
+    to: "/settings/projects",
+    searchTerms: ["hide full access composer mode locked down"],
+  },
+  {
     id: "browser-profiles",
     title: "Browser profiles",
     to: "/settings/integrations",

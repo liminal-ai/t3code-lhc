@@ -4,6 +4,7 @@ import {
   type EnvironmentId,
   type ModelSelection,
   type ProviderInstanceId,
+  type RuntimeMode,
   type ServerSettingsPatch,
 } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
@@ -33,6 +34,13 @@ import { Input } from "../ui/input";
 import { PROJECT_GROUPING_MODE_LABELS } from "./ProjectSettingsPanel";
 import { ProjectDefaultActionsSettings } from "./ProjectDefaultActionsSettings";
 import { searchableSetting } from "./settingsSearch";
+
+const RUNTIME_MODE_LABELS: Record<RuntimeMode, string> = {
+  "approval-required": "Supervised",
+  "auto-accept-edits": "Auto-accept edits",
+  auto: "Auto",
+  "full-access": "Full access",
+};
 import {
   SETTINGS_PICKER_TRIGGER_CLASSNAME,
   SettingResetButton,
@@ -384,6 +392,87 @@ export function ProjectDefaultsSettings({
               <SelectPopup align="end" alignItemWithTrigger={false}>
                 <SelectItem value="enabled">Enabled</SelectItem>
                 <SelectItem value="disabled">Disabled</SelectItem>
+              </SelectPopup>
+            </Select>
+          }
+        />
+        <SettingsRow
+          id={searchableSetting("default-runtime-mode").id}
+          title="Default access mode"
+          description="Mode a new thread starts in when nothing is carried over. The provider's own policy still decides what runs."
+          resetAction={
+            serverSettings.defaultRuntimeMode !== DEFAULT_SERVER_SETTINGS.defaultRuntimeMode ? (
+              <SettingResetButton
+                label="default access mode"
+                disabled={disabled("defaultRuntimeMode")}
+                onClick={() =>
+                  void save({ defaultRuntimeMode: DEFAULT_SERVER_SETTINGS.defaultRuntimeMode })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Select
+              disabled={disabled("defaultRuntimeMode")}
+              value={serverSettings.defaultRuntimeMode}
+              onValueChange={(value) => {
+                if (value && value in RUNTIME_MODE_LABELS)
+                  void save({ defaultRuntimeMode: value as RuntimeMode });
+              }}
+            >
+              <SelectTrigger size="sm" aria-label="Default access mode">
+                <SelectValue>
+                  {targets.length === 0
+                    ? "Unavailable"
+                    : RUNTIME_MODE_LABELS[serverSettings.defaultRuntimeMode]}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="end" alignItemWithTrigger={false}>
+                {(Object.keys(RUNTIME_MODE_LABELS) as RuntimeMode[]).map((mode) => (
+                  <SelectItem key={mode} value={mode}>
+                    {RUNTIME_MODE_LABELS[mode]}
+                  </SelectItem>
+                ))}
+              </SelectPopup>
+            </Select>
+          }
+        />
+        <SettingsRow
+          id={searchableSetting("offer-full-access").id}
+          title="Offer Full access"
+          description="When hidden, the composer does not list Full access. Existing threads keep their mode. Cannot be hidden while the default access mode is Full access."
+          resetAction={
+            serverSettings.hideFullAccess !== DEFAULT_SERVER_SETTINGS.hideFullAccess ? (
+              <SettingResetButton
+                label="offer Full access"
+                disabled={disabled("hideFullAccess")}
+                onClick={() =>
+                  void save({ hideFullAccess: DEFAULT_SERVER_SETTINGS.hideFullAccess })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Select
+              disabled={disabled("hideFullAccess")}
+              value={serverSettings.hideFullAccess ? "hidden" : "offered"}
+              onValueChange={(value) => {
+                if (value === "offered" || value === "hidden")
+                  void save({ hideFullAccess: value === "hidden" });
+              }}
+            >
+              <SelectTrigger size="sm" aria-label="Offer Full access">
+                <SelectValue>
+                  {targets.length === 0
+                    ? "Unavailable"
+                    : serverSettings.hideFullAccess
+                      ? "Hidden"
+                      : "Offered"}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="end" alignItemWithTrigger={false}>
+                <SelectItem value="offered">Offered</SelectItem>
+                <SelectItem value="hidden">Hidden</SelectItem>
               </SelectPopup>
             </Select>
           }

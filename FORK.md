@@ -149,6 +149,19 @@ so the UI's update path is inert.
   and requires a second run to no-op ("already at").
 - Record: one line per promoted release in `lhc-release/RELEASES.md`.
 
+## Access-mode settings (fork-only, informational)
+
+Two server settings, both on Settings → Projects, ship with the fork:
+`defaultRuntimeMode` (default `auto`; a new thread with nothing carried over
+starts there) and `hideFullAccess` (default off; when on, the composer does not
+list Full access). Neither is enforced: the provider's own permission policy
+remains the only enforcer, existing threads keep their mode, and no command is
+rejected for its mode. Setting `hideFullAccess` while the default is
+`full-access` is rejected on write naming both fields; a settings file that
+already carries that pair is read as `auto` with a warning and left untouched.
+The seed leaves both at their defaults. On a locked-down box set
+`defaultRuntimeMode = auto` and `hideFullAccess = true` in Settings by hand.
+
 ## Never run here
 
 `npx t3@latest`, `t3 service install` pointing at the npm package, any

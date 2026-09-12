@@ -5,6 +5,7 @@ import {
   type ModelSelection,
   type ProjectId,
   type ProviderDriverKind,
+  type RuntimeMode,
   type ServerProvider,
   ServerSettings,
   type ServerSettingsPatch,
@@ -313,4 +314,21 @@ export function applyServerSettingsPatch(
     ...nextWithReplacements,
     textGenerationModelSelection: createModelSelection(instanceId, model, options),
   };
+}
+
+/**
+ * `hideFullAccess` with a Full-access default is rejected on write; a settings
+ * file that still carries the pair is read as `auto` so the composer never
+ * defaults to a mode it does not offer.
+ */
+export function isInvalidRuntimeModeDefaults(
+  settings: Pick<ServerSettings, "defaultRuntimeMode" | "hideFullAccess">,
+): boolean {
+  return settings.hideFullAccess && settings.defaultRuntimeMode === "full-access";
+}
+
+export function effectiveDefaultRuntimeMode(
+  settings: Pick<ServerSettings, "defaultRuntimeMode" | "hideFullAccess">,
+): RuntimeMode {
+  return isInvalidRuntimeModeDefaults(settings) ? "auto" : settings.defaultRuntimeMode;
 }

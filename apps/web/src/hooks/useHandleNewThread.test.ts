@@ -60,6 +60,8 @@ vi.mock("@effect/atom-react", () => ({
                 defaultThreadEnvMode: "local",
                 newWorktreesStartFromOrigin: false,
                 defaultModelSelection: null,
+                defaultRuntimeMode: "approval-required",
+                hideFullAccess: false,
               },
             },
           ],
@@ -69,6 +71,10 @@ vi.mock("@t3tools/client-runtime/environment", () => ({
   scopedProjectKey: () => "remote-project",
   scopeProjectRef: (environmentId: string, projectId: string) => ({ environmentId, projectId }),
   scopeThreadRef: (environmentId: string, threadId: string) => ({ environmentId, threadId }),
+}));
+vi.mock("@t3tools/shared/serverSettings", () => ({
+  effectiveDefaultRuntimeMode: (settings: { readonly defaultRuntimeMode?: string }) =>
+    settings.defaultRuntimeMode ?? "auto",
 }));
 vi.mock("@t3tools/contracts", () => ({
   DEFAULT_RUNTIME_MODE: "default",
@@ -170,5 +176,20 @@ describe("useNewThreadHandler", () => {
     expect(testState.router.state.location.href).toBe("/usage");
     expect(testState.router.navigate).not.toHaveBeenCalled();
     expect(testState.draftStore.setLogicalProjectDraftThreadId).not.toHaveBeenCalled();
+  });
+
+  it("starts a fresh thread in the environment's configured default access mode", async () => {
+    testState.reset(null);
+    const openThread = useNewThreadHandler();
+    const pendingOpen = openThread(
+      { environmentId: "environment-ssh", projectId: "project-remote" } as never,
+      { replace: true },
+    );
+    testState.completeProjectFileRead(null);
+    await pendingOpen;
+
+    expect(testState.draftStore.setLogicalProjectDraftThreadId).toHaveBeenCalledTimes(1);
+    const options = testState.draftStore.setLogicalProjectDraftThreadId.mock.calls[0]?.[3];
+    expect(options).toMatchObject({ runtimeMode: "approval-required" });
   });
 });

@@ -52,6 +52,8 @@ import { fromJsonStringPretty, fromLenientJson } from "@t3tools/shared/schemaJso
 import {
   applyServerSettingsPatch,
   isModelSelectionProviderEnabled,
+  effectiveDefaultRuntimeMode,
+  isInvalidRuntimeModeDefaults,
 } from "@t3tools/shared/serverSettings";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 
@@ -224,6 +226,7 @@ const makeTest = (overrides: DeepPartial<ServerSettings> = {}) =>
     const merged = deepMerge(DEFAULT_SERVER_SETTINGS, overridesForMerge);
     const initialSettings = yield* normalizeServerSettings({
       ...merged,
+      defaultRuntimeMode: effectiveDefaultRuntimeMode(merged),
       ...(automaticGitFetchInterval !== undefined
         ? { automaticGitFetchInterval: automaticGitFetchInterval as Duration.Duration }
         : {}),
@@ -461,6 +464,17 @@ const make = Effect.gen(function* () {
         }
       } else {
         settings = decoded.value;
+        if (isInvalidRuntimeModeDefaults(settings)) {
+          yield* Effect.logWarning(
+            'settings.json sets hideFullAccess with defaultRuntimeMode "full-access"; using "auto" as the default',
+            {
+              path: settingsPath,
+              defaultRuntimeMode: settings.defaultRuntimeMode,
+              hideFullAccess: true,
+            },
+          );
+          settings = { ...settings, defaultRuntimeMode: "auto" };
+        }
       }
     }
 
@@ -845,6 +859,15 @@ const make = Effect.gen(function* () {
             current,
             applyServerSettingsPatch(current, patch),
           );
+          if (isInvalidRuntimeModeDefaults(nextPersisted)) {
+            return yield* new ServerSettingsError({
+              settingsPath,
+              operation: "validate",
+              cause: new Error(
+                'hideFullAccess cannot be true while defaultRuntimeMode is "full-access"; change one of the two.',
+              ),
+            });
+          }
           const next = yield* normalizeServerSettings(nextPersisted);
           yield* writeSettingsAtomically(next);
           yield* Cache.set(settingsCache, cacheKey, next);

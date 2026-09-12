@@ -1283,4 +1283,46 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       assert.include(persisted, '"valueRedacted": true');
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
+
+  it.effect("rejects hiding Full access while it is the default, naming both fields", () =>
+    Effect.gen(function* () {
+      const serverConfig = yield* ServerConfig.ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+
+      const error = yield* Effect.flip(
+        serverSettings.updateSettings({ defaultRuntimeMode: "full-access", hideFullAccess: true }),
+      );
+      assert.deepInclude(error, { _tag: "ServerSettingsError", operation: "validate" });
+      assert.include(error.message, "hideFullAccess");
+      assert.include(error.message, "defaultRuntimeMode");
+
+      const current = yield* serverSettings.getSettings;
+      assert.equal(current.defaultRuntimeMode, "auto");
+      assert.equal(current.hideFullAccess, false);
+      assert.isFalse(yield* fileSystem.exists(serverConfig.settingsPath));
+
+      const next = yield* serverSettings.updateSettings({
+        defaultRuntimeMode: "approval-required",
+        hideFullAccess: true,
+      });
+      assert.equal(next.defaultRuntimeMode, "approval-required");
+      assert.equal(next.hideFullAccess, true);
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
+  it.effect("reads a persisted hidden Full-access default as auto without rewriting the file", () =>
+    Effect.gen(function* () {
+      const serverConfig = yield* ServerConfig.ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const raw = '{"defaultRuntimeMode":"full-access","hideFullAccess":true}';
+      yield* fileSystem.writeFileString(serverConfig.settingsPath, raw);
+
+      const settings = yield* serverSettings.getSettings;
+      assert.equal(settings.defaultRuntimeMode, "auto");
+      assert.equal(settings.hideFullAccess, true);
+      assert.equal(yield* fileSystem.readFileString(serverConfig.settingsPath), raw);
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
 });

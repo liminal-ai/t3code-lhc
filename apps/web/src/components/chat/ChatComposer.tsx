@@ -66,6 +66,7 @@ import {
   isInsideComposerFloatingLayer,
   isInsideRestingComposerControlScope,
 } from "./composerEventScope";
+import { offeredRuntimeModeOptions } from "./runtimeModeOptions";
 import {
   type ComposerFileAttachment,
   type ComposerImageAttachment,
@@ -932,6 +933,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
   showInteractionModeToggle: boolean;
   interactionMode: ProviderInteractionMode;
   runtimeMode: RuntimeMode;
+  hideFullAccess?: boolean;
   size?: "sm" | "xs";
   hidden?: boolean;
   onToggleInteractionMode: () => void;
@@ -939,6 +941,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
 }) {
   const size = props.size ?? "sm";
   const [open, setOpen] = useComposerMenuState(props.hidden);
+  const offeredRuntimeModes = offeredRuntimeModeOptions(props.hideFullAccess === true);
   const runtimeModeOption = runtimeModeConfig[props.runtimeMode];
   const RuntimeModeIcon = runtimeModeOption.icon;
   const interactionModeTooltip =
@@ -1014,7 +1017,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
             <SelectValue>{runtimeModeOption.label}</SelectValue>
           </TooltipTrigger>
           <SelectPopup alignItemWithTrigger={false} {...composerFloatingLayerProps}>
-            {runtimeModeOptions.map((mode) => {
+            {offeredRuntimeModes.map((mode) => {
               const option = runtimeModeConfig[mode];
               const OptionIcon = option.icon;
               return (
@@ -1232,6 +1235,8 @@ export interface ChatComposerProps {
   // Mode
   runtimeMode: RuntimeMode;
   interactionMode: ProviderInteractionMode;
+  /** Server setting: do not offer Full access in the mode pickers. */
+  hideFullAccess?: boolean;
 
   // Provider / model
   lockedProvider: ProviderDriverKind | null;
@@ -1350,6 +1355,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     showPlanFollowUpPrompt,
     activeProposedPlan,
     runtimeMode,
+    hideFullAccess,
     interactionMode: requestedInteractionMode,
     lockedProvider,
     providerStatuses,
@@ -3944,6 +3950,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           hidden={composerControlsHidden || restingHiddenBlockCount > 0}
           onToggleInteractionMode={toggleInteractionMode}
           onRuntimeModeChange={handleRuntimeModeChange}
+          {...(hideFullAccess !== undefined ? { hideFullAccess } : {})}
         />
       ),
     },
@@ -4023,6 +4030,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           traitsMenuContent={providerTraitsMenuContent}
           onToggleInteractionMode={toggleInteractionMode}
           onRuntimeModeChange={handleRuntimeModeChange}
+          {...(hideFullAccess !== undefined ? { hideFullAccess } : {})}
         />
       ) : (
         <>
@@ -4069,6 +4077,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 }
                 onToggleInteractionMode={toggleInteractionMode}
                 onRuntimeModeChange={handleRuntimeModeChange}
+                {...(hideFullAccess !== undefined ? { hideFullAccess } : {})}
               />
             </div>
           ) : null}

@@ -18,6 +18,8 @@ import {
   resolveSourceControlWriterModelSelection,
   resolveProjectAgentBrowserAccess,
   resolveProjectAutoPull,
+  effectiveDefaultRuntimeMode,
+  isInvalidRuntimeModeDefaults,
 } from "./serverSettings.ts";
 
 describe("serverSettings helpers", () => {
@@ -716,5 +718,25 @@ describe("serverSettings helpers", () => {
     });
 
     expect(resolved.pauseWhenOnBattery).toBe(false);
+  });
+});
+
+describe("runtime-mode defaults", () => {
+  it("degrades a hidden Full-access default to auto and passes everything else through", () => {
+    expect(
+      isInvalidRuntimeModeDefaults({ defaultRuntimeMode: "full-access", hideFullAccess: true }),
+    ).toBe(true);
+    expect(
+      effectiveDefaultRuntimeMode({ defaultRuntimeMode: "full-access", hideFullAccess: true }),
+    ).toBe("auto");
+    expect(
+      effectiveDefaultRuntimeMode({ defaultRuntimeMode: "full-access", hideFullAccess: false }),
+    ).toBe("full-access");
+    expect(
+      effectiveDefaultRuntimeMode({
+        defaultRuntimeMode: "approval-required",
+        hideFullAccess: true,
+      }),
+    ).toBe("approval-required");
   });
 });

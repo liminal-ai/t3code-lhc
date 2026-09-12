@@ -1,6 +1,7 @@
 import type { DraftId } from "~/composerDraftStore";
 import { useComposerDraftStore } from "~/composerDraftStore";
-import type { ScopedProjectRef } from "@t3tools/contracts";
+import { DEFAULT_SERVER_SETTINGS, type ScopedProjectRef } from "@t3tools/contracts";
+import { effectiveDefaultRuntimeMode } from "@t3tools/shared/serverSettings";
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { FolderPlusIcon } from "lucide-react";
 import { useCallback, useMemo } from "react";
@@ -142,10 +143,18 @@ export function DraftHeroHeadline({
             // place. The prompt stays in the same composer session, so the
             // sidebar only gets a draft row if the user later navigates away.
             const currentDraft = getComposerDraft(draftId);
+            const targetSettings =
+              environments.find(
+                (environment) => environment.environmentId === project.environmentId,
+              )?.serverConfig?.settings ?? DEFAULT_SERVER_SETTINGS;
             setLogicalProjectDraftThreadId(
               entry.group.projectKey,
               scopeProjectRef(project.environmentId, project.id),
               draftId,
+              {
+                runtimeMode:
+                  currentDraft?.runtimeMode ?? effectiveDefaultRuntimeMode(targetSettings),
+              },
             );
             if (!hasExplicitComposerModelSelection(currentDraft)) {
               applyStickyState(draftId);
