@@ -255,6 +255,18 @@ export interface LegacySidebarSlots {
 }
 export const LegacySidebarSlotsContext = React.createContext<LegacySidebarSlots>({});
 
+// Fork seam: the removal inventory predicate, exported for the LHC regression test.
+export function projectRemovalThreads<T extends { environmentId: string; projectId: string }>(
+  threads: Iterable<T>,
+  memberProjectRef: { environmentId: string; projectId: string },
+): T[] {
+  return Array.from(threads).filter(
+    (thread) =>
+      thread.environmentId === memberProjectRef.environmentId &&
+      thread.projectId === memberProjectRef.projectId,
+  );
+}
+
 function SidebarThreadDetailPrewarmer({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
   useEnvironmentThread(threadRef.environmentId, threadRef.threadId);
   return null;
@@ -1112,8 +1124,7 @@ interface SidebarProjectItemProps {
   dragHandleProps: SortableProjectHandleProps | null;
 }
 
-// Fork seam: exported for the LHC removal regression test only.
-export const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjectItemProps) {
+const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjectItemProps) {
   const {
     project,
     isThreadListExpanded,
@@ -1533,12 +1544,9 @@ export const SidebarProjectItem = memo(function SidebarProjectItem(props: Sideba
                     window.setTimeout(resolve, 180);
                   });
 
-                  const latestProjectThreads = Array.from(
+                  const latestProjectThreads = projectRemovalThreads(
                     sidebarThreadByKeyRef.current.values(),
-                  ).filter(
-                    (thread) =>
-                      thread.environmentId === memberProjectRef.environmentId &&
-                      thread.projectId === memberProjectRef.projectId,
+                    memberProjectRef,
                   );
                   const confirmed = await api.dialogs.confirm(
                     latestProjectThreads.length > 0

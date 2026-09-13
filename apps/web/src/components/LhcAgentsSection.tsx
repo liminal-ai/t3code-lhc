@@ -6,6 +6,7 @@ import { ArchiveIcon, ChevronRightIcon, PinOffIcon } from "lucide-react";
 import React, { memo, useCallback, useMemo, useRef, useState } from "react";
 import { type ScopedThreadRef, type ThreadId } from "@t3tools/contracts";
 import {
+  parseScopedThreadKey,
   scopedProjectKey,
   scopedThreadKey,
   scopeProjectRef,
@@ -29,11 +30,14 @@ import {
   buildSidebarProjectSnapshots,
   type SidebarProjectSnapshot,
 } from "../sidebarProjectGrouping";
-import { useProjects, useThreadShells } from "../state/entities";
+import { readThreadShell, useProjects, useThreadShells } from "../state/entities";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import { threadEnvironment } from "../state/threads";
 import { useAtomCommand } from "../state/use-atom-command";
-import { useThreadSelectionStore } from "../threadSelectionStore";
+import {
+  getThreadKeysToDeselectAfterDelete,
+  useThreadSelectionStore,
+} from "../threadSelectionStore";
 import { buildThreadRouteParams, resolveThreadRouteTarget } from "../threadRoutes";
 import { formatRelativeTimeLabel } from "../timestampFormat";
 import type { SidebarThreadSummary } from "../types";
@@ -47,7 +51,11 @@ import {
   sortThreadsByLastTurn,
 } from "./LhcSidebar.logic";
 import { ProjectFavicon } from "./ProjectFavicon";
+import { isMacPlatform } from "../lib/utils";
 import {
+  archiveSelectedThreadEntries,
+  buildMultiSelectThreadContextMenuItems,
+  deleteSelectedThreadEntries,
   isSidebarNestedLinkClick,
   isTrailingDoubleClick,
   resolveThreadRowClassName,
@@ -82,6 +90,8 @@ export interface LhcAgentsModel {
   /** Thread keys in display order, honoring both collapse levels (keyboard order). */
   readonly visibleThreadKeys: readonly string[];
   readonly projectOf: (thread: SidebarThreadSummary) => SidebarProjectSnapshot | null;
+  /** The thread's exact member project root (not the logical group's). */
+  readonly workspaceRootOf: (thread: SidebarThreadSummary) => string | null;
 }
 
 function agentsExpansionKeys(project: SidebarProjectSnapshot): string[] {
@@ -153,6 +163,14 @@ export function useLhcAgentsModel(): LhcAgentsModel {
     (thread: SidebarThreadSummary) => snapshotByKey.get(logicalKeyOf(thread)) ?? null,
     [logicalKeyOf, snapshotByKey],
   );
+  const workspaceRootOf = useCallback(
+    (thread: SidebarThreadSummary) =>
+      projects.find(
+        (project) =>
+          project.environmentId === thread.environmentId && project.id === thread.projectId,
+      )?.workspaceRoot ?? null,
+    [projects],
+  );
 
   return useMemo((): LhcAgentsModel => {
     const agents = sortThreadsByLastTurn(sidebarThreads.filter(isLhcAgent));
@@ -172,7 +190,15 @@ export function useLhcAgentsModel(): LhcAgentsModel {
       : groupByProject
         ? groups.flatMap((group) => (group.expanded ? group.agents.map(keyOf) : []))
         : agents.map(keyOf);
-    return { expanded, groupByProject, agents, groups, visibleThreadKeys, projectOf };
+    return {
+      expanded,
+      groupByProject,
+      agents,
+      groups,
+      visibleThreadKeys,
+      projectOf,
+      workspaceRootOf,
+    };
   }, [
     expanded,
     groupByProject,
@@ -181,6 +207,7 @@ export function useLhcAgentsModel(): LhcAgentsModel {
     projectOf,
     sidebarThreads,
     snapshots,
+    workspaceRootOf,
   ]);
 }
 
@@ -229,9 +256,13 @@ function LhcAgentsHeader(props: {
 const LhcAgentRow = memo(function LhcAgentRow(props: {
   readonly thread: SidebarThreadSummary;
   readonly project: SidebarProjectSnapshot | null;
+  readonly workspaceRoot: string | null;
   readonly isActive: boolean;
+  /** Visible agent keys in display order, for shift-range selection. */
+  readonly orderedKeys: readonly string[];
+  readonly onMultiSelectContextMenu: (position: { x: number; y: number }) => Promise<void>;
 }) {
-  const { thread, project, isActive } = props;
+  const { thread, project, workspaceRoot, isActive, orderedKeys, onMultiSelectContextMenu } = props;
   const threadRef = useMemo(
     () => scopeThreadRef(thread.environmentId, thread.id),
     [thread.environmentId, thread.id],
@@ -244,6 +275,9 @@ const LhcAgentRow = memo(function LhcAgentRow(props: {
   const markThreadUnread = useUiStateStore((state) => state.markThreadUnread);
   const clearSelection = useThreadSelectionStore((state) => state.clearSelection);
   const setSelectionAnchor = useThreadSelectionStore((state) => state.setAnchor);
+  const toggleThreadSelection = useThreadSelectionStore((state) => state.toggleThread);
+  const rangeSelectTo = useThreadSelectionStore((state) => state.rangeSelectTo);
+  const isSelected = useThreadSelectionStore((state) => state.selectedThreadKeys.has(threadKey));
   const confirmThreadDelete = useClientSettings<boolean>((s) => s.confirmThreadDelete);
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
@@ -331,6 +365,17 @@ const LhcAgentRow = memo(function LhcAgentRow(props: {
       const api = readLocalApi();
       if (!api) return;
       const position = { x: event.clientX, y: event.clientY };
+      const hasSelection = useThreadSelectionStore.getState().hasSelection();
+      if (hasSelection && isSelected) {
+        void (async () => {
+          const result = await settlePromise(() => onMultiSelectContextMenu(position));
+          if (result._tag === "Failure") {
+            failToast("Thread action failed", squashAtomCommandFailure(result));
+          }
+        })();
+        return;
+      }
+      if (hasSelection) clearSelection();
       void (async () => {
         const result = await settlePromise(async () => {
           const clicked = await api.contextMenu.show(
@@ -376,8 +421,8 @@ const LhcAgentRow = memo(function LhcAgentRow(props: {
             return;
           }
           if (clicked === "copy-path") {
-            // The thread's own project, never a synthetic one.
-            const path = thread.worktreePath ?? project?.workspaceRoot ?? null;
+            // The thread's exact member project, never the logical group's root.
+            const path = thread.worktreePath ?? workspaceRoot ?? null;
             if (!path) {
               toastManager.add(
                 stackedThreadToast({
@@ -426,6 +471,7 @@ const LhcAgentRow = memo(function LhcAgentRow(props: {
       })();
     },
     [
+      clearSelection,
       confirmThreadDelete,
       copyPath,
       copyThreadId,
@@ -433,7 +479,9 @@ const LhcAgentRow = memo(function LhcAgentRow(props: {
       failToast,
       handleNewThread,
       isMobile,
+      isSelected,
       markThreadUnread,
+      onMultiSelectContextMenu,
       project,
       router,
       runUnpin,
@@ -441,15 +489,27 @@ const LhcAgentRow = memo(function LhcAgentRow(props: {
       thread,
       threadKey,
       threadRef,
+      workspaceRoot,
     ],
   );
   const handleClick = useCallback(
     (event: React.MouseEvent) => {
       if (isSidebarNestedLinkClick(event.target)) return;
+      const isModClick = isMacPlatform(navigator.platform) ? event.metaKey : event.ctrlKey;
+      if (isModClick) {
+        event.preventDefault();
+        toggleThreadSelection(threadKey);
+        return;
+      }
+      if (event.shiftKey) {
+        event.preventDefault();
+        rangeSelectTo(threadKey, orderedKeys);
+        return;
+      }
       if (isTrailingDoubleClick(event.detail)) return;
       navigateToThread();
     },
-    [navigateToThread],
+    [navigateToThread, orderedKeys, rangeSelectTo, threadKey, toggleThreadSelection],
   );
   const handleDoubleClick = useCallback(
     (event: React.MouseEvent) => {
@@ -487,7 +547,7 @@ const LhcAgentRow = memo(function LhcAgentRow(props: {
         size="sm"
         isActive={isActive}
         data-testid={`thread-row-${thread.id}`}
-        className={`${resolveThreadRowClassName({ isActive, isSelected: false })} ${lhcRowSurfaceClassName({ isActive, isSelected: false })} relative isolate`}
+        className={`${resolveThreadRowClassName({ isActive, isSelected })} ${lhcRowSurfaceClassName({ isActive, isSelected })} relative isolate`}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
         onKeyDown={handleKeyDown}
@@ -546,50 +606,169 @@ const LhcAgentRow = memo(function LhcAgentRow(props: {
           </span>
         </div>
         <div className={`${hoverActionWrapClass} right-6`}>
-          <button
-            type="button"
-            data-thread-selection-safe
-            data-testid={`thread-unpin-${thread.id}`}
-            aria-label={`Unpin ${thread.title}`}
-            title="Unpin"
-            className={ICON_ACTION_BUTTON_CLASS}
-            onPointerDown={stopPointer}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              void runUnpin();
-            }}
-          >
-            <PinOffIcon className="size-3.5" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  data-thread-selection-safe
+                  data-testid={`thread-unpin-${thread.id}`}
+                  aria-label={`Unpin ${thread.title}`}
+                  className={ICON_ACTION_BUTTON_CLASS}
+                  onPointerDown={stopPointer}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    void runUnpin();
+                  }}
+                >
+                  <PinOffIcon className="size-3.5" />
+                </button>
+              }
+            />
+            <TooltipPopup side="top">Unpin</TooltipPopup>
+          </Tooltip>
         </div>
         <div className={`${hoverActionWrapClass} right-0.5`}>
-          <button
-            type="button"
-            data-thread-selection-safe
-            data-testid={`thread-archive-${thread.id}`}
-            aria-label={`Archive ${thread.title}`}
-            title="Archive"
-            className={ICON_ACTION_BUTTON_CLASS}
-            onPointerDown={stopPointer}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              void runArchive();
-            }}
-          >
-            <ArchiveIcon className="size-3.5" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  data-thread-selection-safe
+                  data-testid={`thread-archive-${thread.id}`}
+                  aria-label={`Archive ${thread.title}`}
+                  className={ICON_ACTION_BUTTON_CLASS}
+                  onPointerDown={stopPointer}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    void runArchive();
+                  }}
+                >
+                  <ArchiveIcon className="size-3.5" />
+                </button>
+              }
+            />
+            <TooltipPopup side="top">Archive</TooltipPopup>
+          </Tooltip>
         </div>
       </SidebarMenuSubButton>
     </SidebarMenuSubItem>
   );
 });
 
+/** Same multi-select menu as the legacy tree rows (mark unread, archive, delete). */
+function useAgentsMultiSelectContextMenu() {
+  const { archiveThread, deleteThread } = useThreadActions();
+  const markThreadUnread = useUiStateStore((state) => state.markThreadUnread);
+  const clearSelection = useThreadSelectionStore((state) => state.clearSelection);
+  const removeFromSelection = useThreadSelectionStore((state) => state.removeFromSelection);
+  const confirmArchive = useClientSettings<boolean>((s) => s.confirmThreadArchive);
+  const confirmDelete = useClientSettings<boolean>((s) => s.confirmThreadDelete);
+  return useCallback(
+    async (position: { x: number; y: number }) => {
+      const api = readLocalApi();
+      if (!api) return;
+      const threadKeys = [...useThreadSelectionStore.getState().selectedThreadKeys];
+      if (threadKeys.length === 0) return;
+      const count = threadKeys.length;
+      const entries = threadKeys.flatMap((threadKey) => {
+        const threadRef = parseScopedThreadKey(threadKey);
+        const thread = threadRef ? readThreadShell(threadRef) : null;
+        return threadRef && thread ? [{ threadKey, threadRef, thread }] : [];
+      });
+      const hasRunningThread = entries.some(
+        ({ thread }) => thread.session?.status === "running" && thread.session.activeTurnId != null,
+      );
+      const clicked = await api.contextMenu.show(
+        buildMultiSelectThreadContextMenuItems({ count, hasRunningThread }),
+        position,
+      );
+      const fail = (title: string, error: unknown) =>
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title,
+            description: error instanceof Error ? error.message : "An error occurred.",
+          }),
+        );
+      if (clicked === "mark-unread") {
+        for (const { threadKey, thread } of entries) {
+          markThreadUnread(threadKey, thread.latestTurn?.completedAt);
+        }
+        clearSelection();
+        return;
+      }
+      if (clicked === "archive") {
+        if (confirmArchive) {
+          const confirmed = await api.dialogs.confirm(
+            `Archive ${count} thread${count === 1 ? "" : "s"}?`,
+          );
+          if (!confirmed) return;
+        }
+        const outcome = await archiveSelectedThreadEntries({
+          entries,
+          archive: ({ threadRef }, onArchived) => archiveThread(threadRef, { onArchived }),
+        });
+        for (const failure of outcome.followupFailures) {
+          if (!isAtomCommandInterrupted(failure)) {
+            fail("Thread archived, but navigation failed", squashAtomCommandFailure(failure));
+          }
+        }
+        if (outcome.mutationFailure) {
+          removeFromSelection(outcome.archivedThreadKeys);
+          if (!isAtomCommandInterrupted(outcome.mutationFailure)) {
+            fail("Failed to archive threads", squashAtomCommandFailure(outcome.mutationFailure));
+          }
+          return;
+        }
+        removeFromSelection(threadKeys);
+        return;
+      }
+      if (clicked !== "delete") return;
+      if (confirmDelete) {
+        const confirmed = await api.dialogs.confirm(
+          [
+            `Delete ${count} thread${count === 1 ? "" : "s"}?`,
+            "This permanently clears conversation history for these threads.",
+          ].join("\n"),
+          { variant: "destructive" },
+        );
+        if (!confirmed) return;
+      }
+      const { deletedThreadKeys, firstFailure } = await deleteSelectedThreadEntries({
+        entries,
+        delete: ({ threadRef }, deletedThreadKeys) =>
+          deleteThread(threadRef, { deletedThreadKeys }),
+      });
+      if (firstFailure !== null) {
+        fail("Failed to delete threads", squashAtomCommandFailure(firstFailure));
+      }
+      removeFromSelection(
+        getThreadKeysToDeselectAfterDelete(threadKeys, deletedThreadKeys, (threadKey) => {
+          const threadRef = parseScopedThreadKey(threadKey);
+          return threadRef !== null && readThreadShell(threadRef) !== null;
+        }),
+      );
+    },
+    [
+      archiveThread,
+      clearSelection,
+      confirmArchive,
+      confirmDelete,
+      deleteThread,
+      markThreadUnread,
+      removeFromSelection,
+    ],
+  );
+}
+
 export function LhcAgentsSection(props: { readonly model: LhcAgentsModel }) {
   const { model } = props;
   const updateSettings = useUpdateClientSettings();
   const setProjectExpanded = useUiStateStore((state) => state.setProjectExpanded);
+  const onMultiSelectContextMenu = useAgentsMultiSelectContextMenu();
   const routeThreadKey = useParams({
     strict: false,
     select: (params) => {
@@ -603,9 +782,12 @@ export function LhcAgentsSection(props: { readonly model: LhcAgentsModel }) {
         key={scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))}
         thread={thread}
         project={model.projectOf(thread)}
+        workspaceRoot={model.workspaceRootOf(thread)}
         isActive={
           routeThreadKey === scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))
         }
+        orderedKeys={model.visibleThreadKeys}
+        onMultiSelectContextMenu={onMultiSelectContextMenu}
       />
     ));
   return (
@@ -653,15 +835,13 @@ export function LhcAgentsSection(props: { readonly model: LhcAgentsModel }) {
                   {group.agents.length}
                 </span>
               </button>
-              {group.expanded ? (
-                <SidebarMenuSub className="mx-0 border-0 px-0">{rows(group.agents)}</SidebarMenuSub>
-              ) : null}
+              {group.expanded ? <SidebarMenuSub>{rows(group.agents)}</SidebarMenuSub> : null}
             </li>
           ))}
         </SidebarMenu>
       ) : (
         <SidebarMenu>
-          <SidebarMenuSub className="mx-0 border-0 px-0">{rows(model.agents)}</SidebarMenuSub>
+          <SidebarMenuSub>{rows(model.agents)}</SidebarMenuSub>
         </SidebarMenu>
       )}
     </SidebarGroup>

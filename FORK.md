@@ -31,7 +31,7 @@ and trust.
   upstream leaves at the last stable. A fork-only fix landed between syncs
   appends `-lhc.N` (N from 1), dropped again at the next sync. The check
   script keeps `version.json` and `BASE_TAG` in step. Current identity:
-  `0.0.40-lhc.7` on `v0.0.40`; sidecar pin in `lhc-release/sidecar.json` is LHC
+  `0.0.40-lhc.6` on `v0.0.40`; sidecar pin in `lhc-release/sidecar.json` is LHC
   `5f181303`. User-facing notes: `lhc-release/NOTES.md`.
 - Fork versions are never ordered by code, here or in any installer: "latest"
   is GitHub's latest-release marker, and every check is an equality check.
@@ -218,7 +218,7 @@ A third left-nav view for tracking named long-running threads. Files:
 `apps/web/src/components/LhcSidebar.tsx` (composition, ~60 lines),
 `LhcAgentsSection.tsx` (the fork-owned Agents section: model, header, rows,
 row menu), `LhcSidebar.logic.ts` (sort key, agent predicate, grouping, row
-surfaces), `LhcSidebar.removal.test.tsx` (regression below). Upstream
+surfaces), `LhcSidebar.removal.test.ts` (regression below). Upstream
 `Sidebar.tsx` is untouched.
 
 The seam. Upstream `LegacySidebar.tsx` carries one exported optional context,
@@ -228,11 +228,13 @@ tree's rendered-thread filter (presentation only; project inventories are
 untouched), the Projects header collapse, a slot rendered above the Projects
 header, and the keyboard-order list (rows above the tree first, a collapsed
 tree contributes none). Every slot defaults to legacy behavior; no legacy logic
-moved. `SidebarProjectItem` is exported for the regression test only. The LHC
-view provides the context and renders `<LegacySidebar />` inside it.
+moved. The removal-inventory predicate is the exported pure function
+`projectRemovalThreads` (3 lines moved) so the regression test can prove the
+filter never reaches it. The LHC view provides the context and renders
+`<LegacySidebar />` inside it.
 
 Sync rule. Web typecheck fails when upstream renames or removes the context,
-the slot type, the `SidebarProjectItem` export, or a hook the Agents section
+the slot type, `projectRemovalThreads`, or a hook the Agents section
 imports (`useThreadActions`, `useThreadShells`, `useProjects`, `uiStateStore`,
 `sidebarProjectGrouping`). It does not catch a removed read site: an upstream
 refactor that drops one `// Fork seam` line silently restores legacy behavior
@@ -249,9 +251,9 @@ by their newest agent. Collapse under Agents is its own state
 (`lhc-agents:`-prefixed keys), independent of the Projects tree. Rows offer
 Unpin (menu and hover), archive on hover, and the legacy single-row actions
 (new thread on branch, rename, mark unread, copy path / thread id, project
-settings, delete) resolved against the thread's own project. Multi-select
-(cmd/shift click) is a Projects-tree feature; Agents rows do not join a
-selection. Below it a **Projects** section: the legacy tree minus pinned
+settings, delete) resolved against the thread's own member project, and the
+same cmd/shift multi-select with its mark-unread / archive / delete menu.
+Below it a **Projects** section: the legacy tree minus pinned
 threads (a project whose threads are all pinned keeps its header, the
 new-thread affordance); tree rows offer "Pin as agent". Removing a project
 counts pinned agents like any other thread (the filter is presentation only).

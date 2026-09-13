@@ -1,4 +1,4 @@
-// Fork-only (0.0.40-lhc.7): the LHC left-nav view. Composition of the
+// Fork-only: the LHC left-nav view. Composition of the
 // fork-owned Agents section (LhcAgentsSection.tsx) over the upstream legacy
 // Projects tree, wired through LegacySidebar's slots seam (FORK.md "LHC sidebar").
 import { useCallback, useMemo } from "react";
