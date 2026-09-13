@@ -121,3 +121,4 @@ apps/web/src/components/settings/SettingsPanels.tsx
 apps/web/src/hooks/useSettings.test.ts
 apps/web/src/hooks/useSettings.ts
 apps/web/src/routes/_chat.tsx
+apps/desktop/src/settings/DesktopClientSettings.test.ts

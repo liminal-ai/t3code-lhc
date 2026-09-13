@@ -57,6 +57,10 @@ const clientSettings: ClientSettings = {
   sidebarThreadSortOrder: "created_at",
   sidebarThreadPreviewCount: 6,
   legacySidebarEnabled: false,
+  // Fork: LHC sidebar section state.
+  lhcAgentsExpanded: true,
+  lhcAgentsGroupByProject: false,
+  lhcProjectsExpanded: true,
   loadBalancingEnabled: false,
   loadBalancingWeights: { "environment-1": 75, "environment-2": 0 },
   timestampFormat: "24-hour",
