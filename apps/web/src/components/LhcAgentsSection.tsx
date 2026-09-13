@@ -835,13 +835,19 @@ export function LhcAgentsSection(props: { readonly model: LhcAgentsModel }) {
                   {group.agents.length}
                 </span>
               </button>
-              {group.expanded ? <SidebarMenuSub>{rows(group.agents)}</SidebarMenuSub> : null}
+              {group.expanded ? (
+                <SidebarMenuSub className="mx-0.5 my-0 w-full translate-x-0 gap-0.5 overflow-hidden border-l-0 px-1 py-0 sm:mx-1 sm:px-1.5">
+                  {rows(group.agents)}
+                </SidebarMenuSub>
+              ) : null}
             </li>
           ))}
         </SidebarMenu>
       ) : (
         <SidebarMenu>
-          <SidebarMenuSub>{rows(model.agents)}</SidebarMenuSub>
+          <SidebarMenuSub className="mx-0.5 my-0 w-full translate-x-0 gap-0.5 overflow-hidden border-l-0 px-1 py-0 sm:mx-1 sm:px-1.5">
+            {rows(model.agents)}
+          </SidebarMenuSub>
         </SidebarMenu>
       )}
     </SidebarGroup>
