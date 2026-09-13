@@ -31,7 +31,7 @@ and trust.
   upstream leaves at the last stable. A fork-only fix landed between syncs
   appends `-lhc.N` (N from 1), dropped again at the next sync. The check
   script keeps `version.json` and `BASE_TAG` in step. Current identity:
-  `0.0.40-lhc.5` on `v0.0.40`; sidecar pin in `lhc-release/sidecar.json` is LHC
+  `0.0.40-lhc.6` on `v0.0.40`; sidecar pin in `lhc-release/sidecar.json` is LHC
   `5f181303`. User-facing notes: `lhc-release/NOTES.md`.
 - Fork versions are never ordered by code, here or in any installer: "latest"
   is GitHub's latest-release marker, and every check is an equality check.
