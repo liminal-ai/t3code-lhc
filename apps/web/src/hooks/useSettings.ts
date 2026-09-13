@@ -387,21 +387,12 @@ export function resolveSidebarLayout(input: {
   readonly settingsHydrated: boolean;
   readonly sidebarLayout: SidebarLayout | undefined;
   readonly legacySidebarEnabled: boolean;
-  /** Build-time default for an unset layout (preview builds); undefined in releases. */
-  readonly unsetDefault?: SidebarLayout | undefined;
 }): SidebarLayout {
   if (!input.settingsHydrated) return "threads";
   if (input.sidebarLayout !== undefined) return input.sidebarLayout;
   if (input.legacySidebarEnabled) return "projects";
-  return input.unsetDefault ?? "threads";
+  return "threads";
 }
-
-/** Fork-only, preview builds: `VITE_T3CODE_SIDEBAR_LAYOUT=lhc` opens the LHC
-    view for anyone who has not picked a layout. Unset in release builds. */
-const SIDEBAR_LAYOUT_UNSET_DEFAULT: SidebarLayout | undefined = (() => {
-  const raw = import.meta.env.VITE_T3CODE_SIDEBAR_LAYOUT as string | undefined;
-  return raw === "threads" || raw === "projects" || raw === "lhc" ? raw : undefined;
-})();
 
 /** Fork-only: the patch a Settings pick writes. Both keys move together so
     upstream readers of the legacy switch agree with the selected view. */
@@ -425,7 +416,6 @@ export function useSidebarLayout(): SidebarLayout {
     settingsHydrated,
     sidebarLayout: settings.sidebarLayout,
     legacySidebarEnabled: settings.legacySidebarEnabled,
-    unsetDefault: SIDEBAR_LAYOUT_UNSET_DEFAULT,
   });
 }
 

@@ -454,31 +454,6 @@ describe("sidebar layout (fork)", () => {
         legacySidebarEnabled: true,
       }),
     ).toBe("threads");
-    // Preview default applies only when nothing is set and legacy is off.
-    expect(
-      resolveSidebarLayout({
-        settingsHydrated: true,
-        sidebarLayout: undefined,
-        legacySidebarEnabled: false,
-        unsetDefault: "lhc",
-      }),
-    ).toBe("lhc");
-    expect(
-      resolveSidebarLayout({
-        settingsHydrated: true,
-        sidebarLayout: undefined,
-        legacySidebarEnabled: true,
-        unsetDefault: "lhc",
-      }),
-    ).toBe("projects");
-    expect(
-      resolveSidebarLayout({
-        settingsHydrated: true,
-        sidebarLayout: "threads",
-        legacySidebarEnabled: false,
-        unsetDefault: "lhc",
-      }),
-    ).toBe("threads");
   });
 
   it("writes both keys for every pick", () => {

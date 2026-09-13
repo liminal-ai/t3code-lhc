@@ -23,7 +23,7 @@ import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
 import { ProjectFavicon } from "./ProjectFavicon";
 import { useAtomValue } from "@effect/atom-react";
 import { autoAnimate } from "@formkit/auto-animate";
-import React, { useCallback, useEffect, memo, useMemo, useRef, useState } from "react";
+import React, { useCallback, useContext, useEffect, memo, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import {
   DndContext,
@@ -231,6 +231,30 @@ const PROJECT_GROUPING_MODE_LABELS: Record<SidebarProjectGroupingMode, string> =
 const SIDEBAR_ICON_ACTION_BUTTON_CLASS =
   "inline-flex h-6 min-w-6 cursor-pointer items-center justify-center rounded-md px-[calc(--spacing(1)-1px)] text-icon-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring";
 
+// Fork seam (LHC sidebar, FORK.md "LHC sidebar"): optional slots the LHC view
+// provides. Every default is the legacy behavior; read at six marked sites.
+export interface LegacySidebarSlots {
+  /** Rendered above the Projects header. */
+  readonly above?: React.ReactNode;
+  /** Presentation-only filter on rendered tree rows; inventories are untouched. */
+  readonly treeThreadFilter?: (thread: SidebarThreadSummary) => boolean;
+  /** Projects header collapses the tree when set; undefined = always expanded. */
+  readonly projectsExpanded?: boolean;
+  readonly onToggleProjectsExpanded?: () => void;
+  readonly rowSurfaceClassName?: (input: {
+    readonly isActive: boolean;
+    readonly isSelected: boolean;
+  }) => string;
+  /** Extra thread-row context-menu entry, after Rename. */
+  readonly rowMenuExtra?: {
+    readonly label: string;
+    readonly run: (threadRef: ScopedThreadRef) => void;
+  };
+  /** Thread keys rendered above the tree, in display order (keyboard order). */
+  readonly threadKeysAbove?: readonly string[];
+}
+export const LegacySidebarSlotsContext = React.createContext<LegacySidebarSlots>({});
+
 function SidebarThreadDetailPrewarmer({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
   useEnvironmentThread(threadRef.environmentId, threadRef.threadId);
   return null;
@@ -374,6 +398,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     openPrLink,
     thread,
   } = props;
+  const slots = useContext(LegacySidebarSlotsContext); // Fork seam
   const threadRef = scopeThreadRef(thread.environmentId, thread.id);
   const threadKey = scopedThreadKey(threadRef);
   const { leaseLiveStatus, rowRef } = useSidebarRowSubscriptionLease(isActive);
@@ -674,7 +699,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         className={`${resolveThreadRowClassName({
           isActive,
           isSelected,
-        })} relative isolate`}
+        })} ${slots.rowSurfaceClassName?.({ isActive, isSelected }) ?? ""} relative isolate`}
         onClick={handleRowClick}
         onDoubleClick={handleRowDoubleClick}
         onKeyDown={handleRowKeyDown}
@@ -1087,7 +1112,8 @@ interface SidebarProjectItemProps {
   dragHandleProps: SortableProjectHandleProps | null;
 }
 
-const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjectItemProps) {
+// Fork seam: exported for the LHC removal regression test only.
+export const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjectItemProps) {
   const {
     project,
     isThreadListExpanded,
@@ -1107,6 +1133,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     isManualProjectSorting,
     dragHandleProps,
   } = props;
+  const slots = useContext(LegacySidebarSlotsContext); // Fork seam
   const environmentMachine = project.allRemoteMembersAreWsl
     ? "linux"
     : project.allRemoteMembersAreDesktopLocal
@@ -1276,7 +1303,9 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       });
     };
     const visibleProjectThreads = sortThreads(
-      projectThreads.filter((thread) => thread.archivedAt === null),
+      projectThreads
+        .filter((thread) => thread.archivedAt === null)
+        .filter(slots.treeThreadFilter ?? (() => true)), // Fork seam: presentation only
       threadSortOrder,
     );
     const projectStatus = resolveProjectStatusIndicator(
@@ -1289,7 +1318,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       projectStatus,
       visibleProjectThreads,
     };
-  }, [projectThreads, threadLastVisitedAts, threadSortOrder]);
+  }, [projectThreads, slots.treeThreadFilter, threadLastVisitedAts, threadSortOrder]);
   const pinnedCollapsedThread = useMemo(() => {
     const activeThreadKey = activeRouteThreadKey ?? undefined;
     if (!activeThreadKey || projectExpanded) {
@@ -2167,6 +2196,8 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
             ? [{ id: "new-thread-on-branch", label: `New thread on ${thread.branch}` }]
             : []),
           { id: "rename", label: "Rename thread" },
+          // Fork seam
+          ...(slots.rowMenuExtra ? [{ id: "lhc-extra", label: slots.rowMenuExtra.label }] : []),
           { id: "mark-unread", label: "Mark unread" },
           { id: "copy-path", label: "Copy Path" },
           { id: "copy-thread-id", label: "Copy Thread ID" },
@@ -2211,6 +2242,10 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
 
       if (clicked === "rename") {
         startThreadRename(threadKey, thread.title);
+        return;
+      }
+      if (clicked === "lhc-extra") {
+        slots.rowMenuExtra?.run(threadRef); // Fork seam
         return;
       }
 
@@ -2274,6 +2309,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       project.workspaceRoot,
       router,
       setOpenMobile,
+      slots.rowMenuExtra,
       startThreadRename,
     ],
   );
@@ -2873,6 +2909,8 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     attachProjectListAutoAnimateRef,
     projectsLength,
   } = props;
+  const slots = useContext(LegacySidebarSlotsContext); // Fork seam
+  const projectsExpanded = slots.projectsExpanded ?? true;
 
   const handleProjectSortOrderChange = useCallback(
     (sortOrder: SidebarProjectSortOrder) => {
@@ -2947,9 +2985,27 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
         </SidebarGroup>
       ) : null}
       <LocalSecondaryStatus />
+      {slots.above /* Fork seam */}
       <SidebarGroup className="px-2 py-2">
         <div className="mb-1 flex items-center justify-between pl-2 pr-1.5">
-          <span className="text-xs font-medium text-sidebar-muted-foreground/80">Projects</span>
+          {slots.onToggleProjectsExpanded ? (
+            // Fork seam: the header collapses the tree.
+            <button
+              type="button"
+              aria-expanded={projectsExpanded}
+              aria-label="Projects"
+              data-testid="lhc-projects-header"
+              className="-ml-2 flex h-6 min-w-0 flex-1 cursor-pointer items-center gap-1 rounded-md pl-1.5 text-left text-xs font-medium text-sidebar-muted-foreground/80 hover:bg-foreground/6"
+              onClick={slots.onToggleProjectsExpanded}
+            >
+              <ChevronRightIcon
+                className={`size-3.5 shrink-0 transition-transform duration-150 ${projectsExpanded ? "rotate-90" : ""}`}
+              />
+              <span className="truncate">Projects</span>
+            </button>
+          ) : (
+            <span className="text-xs font-medium text-sidebar-muted-foreground/80">Projects</span>
+          )}
           <div className="flex items-center gap-1">
             <ProjectSortMenu
               projectSortOrder={projectSortOrder}
@@ -2979,7 +3035,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
           </div>
         </div>
 
-        {isManualProjectSorting ? (
+        {!projectsExpanded ? null : isManualProjectSorting ? ( // Fork seam
           <DndContext
             sensors={projectDnDSensors}
             collisionDetection={projectCollisionDetection}
@@ -3054,15 +3110,19 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
           </SidebarMenu>
         )}
 
-        {projectsLength === 0 && (
-          <div className="px-2 pt-4 text-center text-secondary-label text-xs">No projects yet</div>
-        )}
+        {projectsExpanded &&
+          projectsLength === 0 && ( // Fork seam
+            <div className="px-2 pt-4 text-center text-secondary-label text-xs">
+              No projects yet
+            </div>
+          )}
       </SidebarGroup>
     </SidebarContent>
   );
 });
 
 export default function LegacySidebar() {
+  const slots = useContext(LegacySidebarSlotsContext); // Fork seam
   const projects = useProjects();
   const sidebarThreads = useThreadShells();
   const projectExpandedById = useUiStateStore((store) => store.projectExpandedById);
@@ -3383,12 +3443,14 @@ export default function LegacySidebar() {
   ]);
   const isManualProjectSorting = sidebarProjectSortOrder === "manual";
   const visibleSidebarThreadKeys = useMemo(
-    () =>
-      sortedProjects.flatMap((project) => {
+    () => [
+      // Fork seam: rows rendered above the tree come first; a collapsed tree contributes none.
+      ...(slots.threadKeysAbove ?? []),
+      ...(slots.projectsExpanded === false ? [] : sortedProjects).flatMap((project) => {
         const projectThreads = sortThreads(
-          (threadsByProjectKey.get(project.projectKey) ?? []).filter(
-            (thread) => thread.archivedAt === null,
-          ),
+          (threadsByProjectKey.get(project.projectKey) ?? [])
+            .filter((thread) => thread.archivedAt === null)
+            .filter(slots.treeThreadFilter ?? (() => true)),
           sidebarThreadSortOrder,
         );
         const projectExpanded = resolveProjectExpanded(
@@ -3419,12 +3481,16 @@ export default function LegacySidebar() {
           scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
         );
       }),
+    ],
     [
       sidebarThreadSortOrder,
       sidebarThreadPreviewCount,
       expandedThreadListsByProject,
       projectExpandedById,
       routeThreadKey,
+      slots.projectsExpanded,
+      slots.threadKeysAbove,
+      slots.treeThreadFilter,
       sortedProjects,
       threadsByProjectKey,
     ],

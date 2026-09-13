@@ -2,7 +2,7 @@
 
 Upstream remains v0.0.40. Sidecar pin LHC `5f181303`.
 
-- **LHC sidebar.** A third left-nav view (**Settings → General → Legacy features → Sidebar → LHC**): an Agents section (pinned threads, ordered by last turn, right-click the header to group by project) above the projects tree without pinned threads; both sections collapse from their headers; one-line rows with visible hover and selection. Fork copy of the legacy view; Threads and Projects are unchanged.
+- **LHC sidebar.** A third left-nav view (**Settings → General → Legacy features → Sidebar → LHC**): an Agents section (pinned threads, ordered by last turn, right-click the header to group by project) above the projects tree without pinned threads; both sections collapse from their headers; one-line rows with visible hover and selection. Rows under Projects offer "Pin as agent"; agent rows offer Unpin, plus the usual single-row actions against the thread's own project. Removing a project still counts its pinned agents. Built as the fork-owned Agents section over the upstream legacy tree through a small declared seam in `LegacySidebar.tsx` (FORK.md "LHC sidebar"). Deferred: thread-jump hint badges on agent rows; multi-select stays a Projects-tree feature.
 - **Sidebar setting.** The legacy sidebar switch becomes a Threads / Projects / LHC select. Existing settings files resolve as before (legacy on → Projects).
 
 # 0.0.40-lhc.6

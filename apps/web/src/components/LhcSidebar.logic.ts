@@ -33,6 +33,21 @@ export function lastTurnActivityMs(thread: LhcSortableThread): number {
   return best;
 }
 
+/** The ISO stamp behind `lastTurnActivityMs`, for the row's age label (same source as the sort). */
+export function lastTurnActivityStamp(thread: LhcSortableThread): string {
+  const turn = thread.latestTurn;
+  const stamps = turn
+    ? [turn.completedAt ?? undefined, turn.startedAt ?? undefined, turn.requestedAt]
+    : [thread.createdAt];
+  let best: { stamp: string; ms: number } | null = null;
+  for (const stamp of stamps) {
+    if (stamp === undefined) continue;
+    const ms = toSortableTimestamp(stamp);
+    if (ms !== null && (best === null || ms > best.ms)) best = { stamp, ms };
+  }
+  return best?.stamp ?? thread.createdAt;
+}
+
 /** Newest activity first; ties by createdAt desc, then stable. */
 export function sortThreadsByLastTurn<T extends LhcSortableThread>(threads: ReadonlyArray<T>): T[] {
   return threads
