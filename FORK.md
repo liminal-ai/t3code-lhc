@@ -31,7 +31,7 @@ and trust.
   upstream leaves at the last stable. A fork-only fix landed between syncs
   appends `-lhc.N` (N from 1), dropped again at the next sync. The check
   script keeps `version.json` and `BASE_TAG` in step. Current identity:
-  `0.0.40-lhc.6` on `v0.0.40`; sidecar pin in `lhc-release/sidecar.json` is LHC
+  `0.0.40-lhc.7` on `v0.0.40`; sidecar pin in `lhc-release/sidecar.json` is LHC
   `5f181303`. User-facing notes: `lhc-release/NOTES.md`.
 - Fork versions are never ordered by code, here or in any installer: "latest"
   is GitHub's latest-release marker, and every check is an equality check.
@@ -211,6 +211,30 @@ rejected for its mode. Setting `hideFullAccess` while the default is
 already carries that pair is read as `auto` with a warning and left untouched.
 The seed leaves both at their defaults. On a locked-down box set
 `defaultRuntimeMode = auto` and `hideFullAccess = true` in Settings by hand.
+
+## LHC sidebar (fork-only)
+
+A third left-nav view for tracking named long-running threads:
+`apps/web/src/components/LhcSidebar.tsx`, a copy of upstream `Sidebar.tsx`
+(source commit in the file header) with `LhcSidebar.logic.ts` for the parts
+that differ. Upstream `Sidebar.tsx` and `LegacySidebar.tsx` stay untouched;
+upstream changes to `Sidebar.tsx` are ported into the copy by hand and logged
+in `SYNCS.md`.
+
+Differences from the Threads view: rows show the project name (no icon), the
+status slot and the title only (the branch/provider line is gone; the hover
+tooltip keeps branch, PR, diff, terminal and provider); rows are shorter with
+smaller text; the active and pinned shelves both order by last turn activity
+(newest of the latest turn's requested / started / completed stamps, threads
+with no turn by `createdAt`; never `updatedAt`, so pins, renames and title
+regeneration do not reorder); in-shelf drag reorder is a no-op while pin,
+unpin, settle, unsettle and snooze keep working. Arranged order keys are
+ignored, not cleared, so the Threads view keeps its order.
+
+Selection is the client setting `sidebarLayout: "threads" | "projects" |
+"lhc"` (**Settings → General → Sidebar**). Unset defers to upstream's
+`legacySidebarEnabled` (`true` → Projects). The select writes both keys so
+upstream readers of the legacy switch agree with the chosen view.
 
 ## Default instance seed (fork-only)
 

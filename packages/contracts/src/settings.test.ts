@@ -313,6 +313,11 @@ describe("ClientSettings sidebar", () => {
 
   it("preserves an explicit legacy sidebar opt-in", () => {
     expect(decodeClientSettings({ legacySidebarEnabled: true }).legacySidebarEnabled).toBe(true);
+    // Fork: sidebarLayout is optional (unset defers to the legacy switch) and accepts the three views.
+    expect(decodeClientSettings({}).sidebarLayout).toBeUndefined();
+    expect(decodeClientSettings({ sidebarLayout: "lhc" }).sidebarLayout).toBe("lhc");
+    expect(decodeClientSettingsPatch({ sidebarLayout: "projects" }).sidebarLayout).toBe("projects");
+    expect(() => decodeClientSettings({ sidebarLayout: "grid" })).toThrow();
     expect(decodeClientSettingsPatch({ legacySidebarEnabled: true }).legacySidebarEnabled).toBe(
       true,
     );

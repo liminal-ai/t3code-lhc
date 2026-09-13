@@ -315,9 +315,9 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "legacy-sidebar",
-    title: "Sidebar (legacy)",
+    title: "Sidebar",
     to: "/settings/general",
-    searchTerms: ["project thread tree old flat list"],
+    searchTerms: ["project thread tree old flat list lhc layout view legacy"],
   },
   {
     id: "keybindings",

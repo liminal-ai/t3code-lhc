@@ -3,7 +3,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { useEffect, useMemo } from "react";
 
 import { isCommandPaletteOpen } from "../commandPaletteBus";
-import { useClientSettings, useLegacySidebarEnabled } from "../hooks/useSettings";
+import { useClientSettings, useSidebarLayout } from "../hooks/useSettings";
 import { openCommandPalette } from "../commandPaletteBus";
 import { useProjects } from "../state/entities";
 import { usePrimaryEnvironmentId } from "../state/environments";
@@ -28,7 +28,8 @@ function ChatRouteGlobalShortcuts() {
   const { activeDraftThread, activeThread, defaultProjectRef, handleNewThread, routeThreadRef } =
     useHandleNewThread();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-  const legacySidebarEnabled = useLegacySidebarEnabled();
+  // Fork: only the Projects (legacy) view keeps the immediate contextual create.
+  const legacySidebarEnabled = useSidebarLayout() === "projects";
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const projects = useProjects();
   const primaryEnvironmentId = usePrimaryEnvironmentId();

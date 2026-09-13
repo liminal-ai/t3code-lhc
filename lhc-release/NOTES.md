@@ -1,3 +1,10 @@
+# 0.0.40-lhc.7
+
+Upstream remains v0.0.40. Sidecar pin LHC `5f181303`.
+
+- **LHC sidebar.** A third left-nav view (**Settings → General → Sidebar → LHC**): two-line rows (project name, status, title), smaller metrics, active and pinned shelves ordered by last turn activity, in-shelf drag reorder off. Fork copy of the Threads view; Threads and Projects are unchanged.
+- **Sidebar setting.** The legacy sidebar switch becomes a Threads / Projects / LHC select. Existing settings files resolve as before (legacy on → Projects).
+
 # 0.0.40-lhc.6
 
 Upstream remains v0.0.40. Sidecar pin LHC `5f181303`.

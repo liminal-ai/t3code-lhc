@@ -50,6 +50,12 @@ export const SidebarThreadSortOrder = Schema.Literals(["updated_at", "created_at
 export type SidebarThreadSortOrder = typeof SidebarThreadSortOrder.Type;
 export const DEFAULT_SIDEBAR_THREAD_SORT_ORDER: SidebarThreadSortOrder = "updated_at";
 
+// Fork-only: which left-nav view renders. Unset resolves through
+// legacySidebarEnabled (true -> "projects", else "threads"); see
+// apps/web/src/hooks/useSettings.ts useSidebarLayout.
+export const SidebarLayout = Schema.Literals(["threads", "projects", "lhc"]);
+export type SidebarLayout = typeof SidebarLayout.Type;
+
 export const SidebarProjectGroupingMode = Schema.Literals([
   "repository",
   "repository_path",
@@ -347,6 +353,8 @@ export const ClientSettingsSchema = Schema.Struct({
   // old keys, so everyone, including prior beta opt-outs, resets to the new
   // default sidebar.
   legacySidebarEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  // Fork-only; optional so an unset value keeps upstream's legacy switch authoritative.
+  sidebarLayout: Schema.optionalKey(SidebarLayout),
   sidebarProjectGroupingMode: SidebarProjectGroupingMode.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_SIDEBAR_PROJECT_GROUPING_MODE)),
   ),
@@ -1320,6 +1328,7 @@ export const ClientSettingsPatch = Schema.Struct({
   proactivePanelsEnabled: Schema.optionalKey(Schema.Boolean),
   showSkillsInSlashMenu: Schema.optionalKey(Schema.Boolean),
   legacySidebarEnabled: Schema.optionalKey(Schema.Boolean),
+  sidebarLayout: Schema.optionalKey(SidebarLayout),
   sidebarProjectGroupingMode: Schema.optionalKey(SidebarProjectGroupingMode),
   sidebarProjectGroupingOverrides: Schema.optionalKey(
     Schema.Record(TrimmedNonEmptyString, SidebarProjectGroupingMode),
