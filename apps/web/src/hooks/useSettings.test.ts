@@ -24,6 +24,8 @@ import {
   persistClientSettingsPatch,
   persistClientSettingsUpdate,
   resolveEnvironmentIdentificationMode,
+  resolveSidebarLayout,
+  sidebarLayoutSettingsPatch,
 } from "./useSettings";
 
 beforeEach(() => {
@@ -419,5 +421,53 @@ describe("onboarding completion persistence", () => {
     );
     expect(getClientSettings()).toEqual(completedSettings);
     expect(persist).toHaveBeenLastCalledWith(completedSettings);
+  });
+});
+
+describe("sidebar layout (fork)", () => {
+  it("resolves the set value, else the legacy switch, else the LHC default (also before hydration)", () => {
+    expect(
+      resolveSidebarLayout({
+        settingsHydrated: true,
+        sidebarLayout: "lhc",
+        legacySidebarEnabled: true,
+      }),
+    ).toBe("lhc");
+    expect(
+      resolveSidebarLayout({
+        settingsHydrated: true,
+        sidebarLayout: undefined,
+        legacySidebarEnabled: true,
+      }),
+    ).toBe("projects");
+    expect(
+      resolveSidebarLayout({
+        settingsHydrated: true,
+        sidebarLayout: undefined,
+        legacySidebarEnabled: false,
+      }),
+    ).toBe("lhc");
+    expect(
+      resolveSidebarLayout({
+        settingsHydrated: false,
+        sidebarLayout: "projects",
+        legacySidebarEnabled: true,
+      }),
+    ).toBe("lhc");
+  });
+
+  it("writes both keys for every pick", () => {
+    expect(sidebarLayoutSettingsPatch("threads")).toEqual({
+      sidebarLayout: "threads",
+      legacySidebarEnabled: false,
+    });
+    expect(sidebarLayoutSettingsPatch("projects")).toEqual({
+      sidebarLayout: "projects",
+      legacySidebarEnabled: true,
+    });
+    expect(sidebarLayoutSettingsPatch("lhc")).toEqual({
+      sidebarLayout: "lhc",
+      legacySidebarEnabled: false,
+    });
   });
 });

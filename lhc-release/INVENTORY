@@ -113,3 +113,15 @@ scripts/lib/lhc-sidecar-stage.ts
 scripts/lib/lhc-store.test.ts
 scripts/lib/lhc-store.ts
 scripts/migrate-claude-lhc-driver.py
+apps/web/src/components/AppSidebarLayout.tsx
+apps/web/src/components/LhcSidebar.logic.test.ts
+apps/web/src/components/LhcSidebar.logic.ts
+apps/web/src/components/LhcSidebar.tsx
+apps/web/src/components/settings/SettingsPanels.tsx
+apps/web/src/hooks/useSettings.test.ts
+apps/web/src/hooks/useSettings.ts
+apps/web/src/routes/_chat.tsx
+apps/desktop/src/settings/DesktopClientSettings.test.ts
+apps/web/src/components/LegacySidebar.tsx
+apps/web/src/components/LhcAgentsSection.tsx
+apps/web/src/components/LhcSidebar.removal.test.ts

@@ -11,6 +11,7 @@ import {
   type ProviderInstanceId,
   type ScopedThreadRef,
   type SidebarProjectGroupingMode,
+  type SidebarLayout,
 } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
@@ -70,7 +71,19 @@ import {
   useTheme,
 } from "../../hooks/useTheme";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
-import { usePrimarySettings, useUpdatePrimarySettings } from "../../hooks/useSettings";
+import {
+  resolveSidebarLayout,
+  sidebarLayoutSettingsPatch,
+  usePrimarySettings,
+  useUpdatePrimarySettings,
+} from "../../hooks/useSettings";
+
+// Fork: labels for the three-way sidebar view select.
+const SIDEBAR_LAYOUT_LABELS: Record<SidebarLayout, string> = {
+  threads: "Threads",
+  projects: "Projects",
+  lhc: "LHC",
+};
 import { useThreadActions } from "../../hooks/useThreadActions";
 import { useDesktopUpdateState } from "../../state/desktopUpdate";
 import {
@@ -1870,7 +1883,6 @@ const LEGACY_FEATURE_TARGET_IDS: ReadonlySet<string> = new Set([
   "legacy-plan-mode",
   "legacy-context-window-indicator",
   "legacy-token-streaming",
-  "legacy-sidebar",
 ]);
 
 /**
@@ -1986,19 +1998,6 @@ function LegacyFeaturesSection() {
                 />
               }
             />
-            <SettingsRow
-              {...searchableSetting("legacy-sidebar")}
-              description="Restore per-project thread trees instead of the default flat sidebar."
-              control={
-                <Switch
-                  checked={settings.legacySidebarEnabled}
-                  onCheckedChange={(checked) =>
-                    updateSettings({ legacySidebarEnabled: Boolean(checked) })
-                  }
-                  aria-label="Sidebar (legacy)"
-                />
-              }
-            />
           </div>
         </CollapsiblePanel>
       </Collapsible>
@@ -2076,6 +2075,43 @@ export function GeneralSettingsPanel() {
     <SettingsPageContainer>
       <SharedSettingsMismatchAlert />
       <SettingsSection id="organization" title="Organization">
+        <SettingsRow
+          {...searchableSetting("sidebar")}
+          description="Threads (flat), Projects (per-project trees), or LHC (compact rows ordered by last turn)."
+          control={
+            <Select
+              value={resolveSidebarLayout({
+                settingsHydrated: true,
+                sidebarLayout: settings.sidebarLayout,
+                legacySidebarEnabled: settings.legacySidebarEnabled,
+              })}
+              onValueChange={(value) => {
+                updateSettings(sidebarLayoutSettingsPatch(value as SidebarLayout));
+              }}
+            >
+              <SelectTrigger size="sm" className="w-full sm:w-40" aria-label="Sidebar">
+                <SelectValue>
+                  {
+                    SIDEBAR_LAYOUT_LABELS[
+                      resolveSidebarLayout({
+                        settingsHydrated: true,
+                        sidebarLayout: settings.sidebarLayout,
+                        legacySidebarEnabled: settings.legacySidebarEnabled,
+                      })
+                    ]
+                  }
+                </SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="end" alignItemWithTrigger={false}>
+                {(["threads", "projects", "lhc"] as const).map((layout) => (
+                  <SelectItem key={layout} hideIndicator value={layout}>
+                    {SIDEBAR_LAYOUT_LABELS[layout]}
+                  </SelectItem>
+                ))}
+              </SelectPopup>
+            </Select>
+          }
+        />
         <SettingsRow
           {...searchableSetting("project-grouping")}
           description="Combine matching repositories across environments."

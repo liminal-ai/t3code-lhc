@@ -16,6 +16,7 @@ import {
   type EnvironmentId,
   ServerSettings,
   type ServerSettingsPatch,
+  type SidebarLayout,
 } from "@t3tools/contracts";
 import {
   type ClientSettingsPatch,
@@ -379,6 +380,44 @@ export function useLegacySidebarEnabled(): boolean {
   const settingsHydrated = useClientSettingsHydrated();
   const legacySidebarEnabled = useClientSettingsValue().legacySidebarEnabled;
   return settingsHydrated && legacySidebarEnabled;
+}
+
+/** Fork-only: pure resolution of the sidebar view from client settings. */
+export function resolveSidebarLayout(input: {
+  readonly settingsHydrated: boolean;
+  readonly sidebarLayout: SidebarLayout | undefined;
+  readonly legacySidebarEnabled: boolean;
+}): SidebarLayout {
+  // Fork default is the LHC view; held there until hydration so the common case never remounts.
+  if (!input.settingsHydrated) return "lhc";
+  if (input.sidebarLayout !== undefined) return input.sidebarLayout;
+  if (input.legacySidebarEnabled) return "projects";
+  return "lhc";
+}
+
+/** Fork-only: the patch a Settings pick writes. Both keys move together so
+    upstream readers of the legacy switch agree with the selected view. */
+export function sidebarLayoutSettingsPatch(sidebarLayout: SidebarLayout): {
+  readonly sidebarLayout: SidebarLayout;
+  readonly legacySidebarEnabled: boolean;
+} {
+  return { sidebarLayout, legacySidebarEnabled: sidebarLayout === "projects" };
+}
+
+/**
+ * Fork-only: which left-nav view renders (Settings → General → Sidebar).
+ * `sidebarLayout` wins when set; unset defers to `legacySidebarEnabled` so an
+ * upstream settings file resolves exactly as before. Held at "threads" until
+ * hydration for the same remount reason as useLegacySidebarEnabled.
+ */
+export function useSidebarLayout(): SidebarLayout {
+  const settingsHydrated = useClientSettingsHydrated();
+  const settings = useClientSettingsValue();
+  return resolveSidebarLayout({
+    settingsHydrated,
+    sidebarLayout: settings.sidebarLayout,
+    legacySidebarEnabled: settings.legacySidebarEnabled,
+  });
 }
 
 /** Read current settings for one environment, merged with client-local preferences. */

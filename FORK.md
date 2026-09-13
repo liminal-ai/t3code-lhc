@@ -212,6 +212,64 @@ already carries that pair is read as `auto` with a warning and left untouched.
 The seed leaves both at their defaults. On a locked-down box set
 `defaultRuntimeMode = auto` and `hideFullAccess = true` in Settings by hand.
 
+## LHC sidebar (fork-only)
+
+A third left-nav view for tracking named long-running threads. Files:
+`apps/web/src/components/LhcSidebar.tsx` (composition, ~60 lines),
+`LhcAgentsSection.tsx` (the fork-owned Agents section: model, header, rows,
+row menu), `LhcSidebar.logic.ts` (sort key, agent predicate, grouping, row
+surfaces), `LhcSidebar.removal.test.ts` (regression below). Upstream
+`Sidebar.tsx` is untouched.
+
+The seam. Upstream `LegacySidebar.tsx` carries one exported optional context,
+`LegacySidebarSlotsContext` (`LegacySidebarSlots`), read at sites marked
+`// Fork seam`: thread-row surface class, thread-row menu extra entry, the
+tree's rendered-thread filter (presentation only; project inventories are
+untouched), the Projects header collapse, a slot rendered above the Projects
+header, and the keyboard-order list (rows above the tree first, a collapsed
+tree contributes none). Every slot defaults to legacy behavior; no legacy logic
+moved. The removal-inventory predicate is the exported pure function
+`projectRemovalThreads` (3 lines moved) so the regression test can prove the
+filter never reaches it. The LHC view provides the context and renders
+`<LegacySidebar />` inside it.
+
+Sync rule. Web typecheck fails when upstream renames or removes the context,
+the slot type, `projectRemovalThreads`, or a hook the Agents section
+imports (`useThreadActions`, `useThreadShells`, `useProjects`, `uiStateStore`,
+`sidebarProjectGrouping`). It does not catch a removed read site: an upstream
+refactor that drops one `// Fork seam` line silently restores legacy behavior
+there. After a sync touching `LegacySidebar.tsx`, grep the six marked sites and
+run the removal regression plus the headless view check before recording.
+
+Structure: an **Agents** section (every pinned, non-archived thread; pin means
+"long-term agent" here) ordered by last turn activity (newest of the latest
+turn's requested / started / completed stamps, threads with no turn by
+`createdAt`; never `updatedAt`); the row's age label uses the same stamp.
+Right-click (long-press on touch) on the Agents header opens a menu with
+"Group by project": one collapsible sub-heading per project, projects ordered
+by their newest agent. Collapse under Agents is its own state
+(`lhc-agents:`-prefixed keys), independent of the Projects tree. Rows offer
+Unpin (menu and hover), archive on hover, and the legacy single-row actions
+(new thread on branch, rename, mark unread, copy path / thread id, project
+settings, delete) resolved against the thread's own member project, and the
+same cmd/shift multi-select with its mark-unread / archive / delete menu.
+Below it a **Projects** section: the legacy tree minus pinned
+threads (a project whose threads are all pinned keeps its header, the
+new-thread affordance); tree rows offer "Pin as agent". Removing a project
+counts pinned agents like any other thread (the filter is presentation only).
+Both section headers collapse their section; the Projects header keeps the
+sort and add-project buttons. Rows are one line with visible hover, selected
+and open surfaces. Theo's active / snoozed / settled shelves do not exist here.
+
+Selection is the client setting `sidebarLayout: "threads" | "projects" |
+"lhc"` (**Settings → General → Sidebar**, three options), persisted in the
+browser like every client setting. The fork default is LHC: an explicit pick
+wins; unset with upstream's `legacySidebarEnabled: true` is Projects; otherwise
+LHC. Upstream's stock default (Threads) is one pick away. The select writes both keys so
+upstream readers of the legacy switch agree with the chosen view. Section state
+lives in client settings `lhcAgentsExpanded`, `lhcAgentsGroupByProject`,
+`lhcProjectsExpanded`.
+
 ## Default instance seed (fork-only)
 
 Stock synthesizes one instance per built-in driver from `providers.<kind>`
