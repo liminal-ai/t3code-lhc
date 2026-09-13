@@ -318,6 +318,11 @@ describe("ClientSettings sidebar", () => {
     expect(decodeClientSettings({ sidebarLayout: "lhc" }).sidebarLayout).toBe("lhc");
     expect(decodeClientSettingsPatch({ sidebarLayout: "projects" }).sidebarLayout).toBe("projects");
     expect(() => decodeClientSettings({ sidebarLayout: "grid" })).toThrow();
+    expect(decodeClientSettings({}).lhcAgentsExpanded).toBe(true);
+    expect(decodeClientSettings({}).lhcAgentsGroupByProject).toBe(false);
+    expect(
+      decodeClientSettingsPatch({ lhcAgentsGroupByProject: true }).lhcAgentsGroupByProject,
+    ).toBe(true);
     expect(decodeClientSettingsPatch({ legacySidebarEnabled: true }).legacySidebarEnabled).toBe(
       true,
     );

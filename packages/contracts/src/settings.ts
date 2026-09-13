@@ -355,6 +355,9 @@ export const ClientSettingsSchema = Schema.Struct({
   legacySidebarEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   // Fork-only; optional so an unset value keeps upstream's legacy switch authoritative.
   sidebarLayout: Schema.optionalKey(SidebarLayout),
+  // Fork-only, LHC sidebar: Agents section state.
+  lhcAgentsExpanded: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  lhcAgentsGroupByProject: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   sidebarProjectGroupingMode: SidebarProjectGroupingMode.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_SIDEBAR_PROJECT_GROUPING_MODE)),
   ),
@@ -1329,6 +1332,8 @@ export const ClientSettingsPatch = Schema.Struct({
   showSkillsInSlashMenu: Schema.optionalKey(Schema.Boolean),
   legacySidebarEnabled: Schema.optionalKey(Schema.Boolean),
   sidebarLayout: Schema.optionalKey(SidebarLayout),
+  lhcAgentsExpanded: Schema.optionalKey(Schema.Boolean),
+  lhcAgentsGroupByProject: Schema.optionalKey(Schema.Boolean),
   sidebarProjectGroupingMode: Schema.optionalKey(SidebarProjectGroupingMode),
   sidebarProjectGroupingOverrides: Schema.optionalKey(
     Schema.Record(TrimmedNonEmptyString, SidebarProjectGroupingMode),

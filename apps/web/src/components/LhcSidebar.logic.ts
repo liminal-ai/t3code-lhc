@@ -1,7 +1,6 @@
-// Fork-only helpers for LhcSidebar.tsx: the last-turn sort key and the drop
-// filter that keeps shelf moves while dropping in-shelf reordering.
+// Fork-only helpers for LhcSidebar.tsx (copy of LegacySidebar.tsx): the
+// last-turn sort key, the Agents partition/grouping, and row surfaces.
 import { toSortableTimestamp } from "@t3tools/client-runtime/state/thread-sort";
-import { planSidebarThreadDrop, type SidebarThreadDropPlan } from "./Sidebar.logic";
 
 export interface LhcSortableThread {
   readonly createdAt: string;
@@ -28,8 +27,9 @@ export function lastTurnActivityMs(thread: LhcSortableThread): number {
     const ms = toSortableTimestamp(stamp);
     if (ms !== null && ms > best) best = ms;
   }
-  if (best === Number.NEGATIVE_INFINITY)
+  if (best === Number.NEGATIVE_INFINITY) {
     best = toSortableTimestamp(thread.createdAt) ?? Number.NEGATIVE_INFINITY;
+  }
   return best;
 }
 
@@ -47,16 +47,59 @@ export function sortThreadsByLastTurn<T extends LhcSortableThread>(threads: Read
     .map((entry) => entry.thread);
 }
 
+export interface LhcAgentCandidate extends LhcSortableThread {
+  readonly pinnedAt?: string | null | undefined;
+  readonly archivedAt: string | null;
+}
+
+/** Pinned, non-archived threads are agents; everything else stays in the Projects tree. */
+export function isLhcAgent(thread: LhcAgentCandidate): boolean {
+  return thread.pinnedAt != null && thread.archivedAt === null;
+}
+
 /**
- * Theo's planner, minus in-shelf reordering: pinned-to-pinned and
- * active-to-active drops become no-ops; pin, unpin (move-active from another
- * shelf), settle and unsettle keep their plans.
+ * Projects that own at least one agent, ordered by their newest agent's last
+ * turn (newest first). `projectKeyOf` maps a thread to its (logical) project key.
  */
-export function planLhcSidebarThreadDrop(
-  input: Parameters<typeof planSidebarThreadDrop>[0],
-): SidebarThreadDropPlan {
-  const plan = planSidebarThreadDrop(input);
-  if (plan.kind === "reorder-pinned") return { kind: "none" };
-  if (plan.kind === "move-active" && input.activeSection === "active") return { kind: "none" };
-  return plan;
+export function orderAgentProjects<
+  TProject extends { readonly projectKey: string },
+  TThread extends LhcAgentCandidate,
+>(
+  projects: ReadonlyArray<TProject>,
+  agents: ReadonlyArray<TThread>,
+  projectKeyOf: (thread: TThread) => string,
+): TProject[] {
+  const newestByProject = new Map<string, number>();
+  for (const agent of agents) {
+    const key = projectKeyOf(agent);
+    const ms = lastTurnActivityMs(agent);
+    const current = newestByProject.get(key);
+    if (current === undefined || ms > current) newestByProject.set(key, ms);
+  }
+  return projects
+    .map((project, index) => ({ project, index, key: newestByProject.get(project.projectKey) }))
+    .filter(
+      (entry): entry is { project: TProject; index: number; key: number } =>
+        entry.key !== undefined,
+    )
+    .sort((left, right) => right.key - left.key || left.index - right.index)
+    .map((entry) => entry.project);
+}
+
+/** Per-project collapse under Agents is its own state (hide my agents vs hide my scratch work). */
+export const LHC_AGENTS_EXPANSION_PREFIX = "lhc-agents:";
+
+/**
+ * Row surfaces: the stock tokens (hover zinc-25, active white) vanish on a
+ * light sidebar, so hover, selection and the open thread get visible tints.
+ */
+export function lhcRowSurfaceClassName(input: {
+  readonly isActive: boolean;
+  readonly isSelected: boolean;
+}): string {
+  if (input.isActive)
+    return "bg-foreground/10 ring-1 ring-inset ring-foreground/15 hover:bg-foreground/10";
+  if (input.isSelected)
+    return "bg-foreground/7 ring-1 ring-inset ring-foreground/10 hover:bg-foreground/8";
+  return "hover:bg-foreground/6";
 }
