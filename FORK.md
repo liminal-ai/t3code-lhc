@@ -266,3 +266,9 @@ third-party `engines` blindly. The builder runs `tsc` as
 prunes devDependencies. Vite+ is `process.execPath [node_modules/vite-plus/bin/vp, ...]`,
 not `node_modules/.bin/vp`. GNU tar child PATH includes that tar's directory so
 Windows Git `gzip` is reachable.
+
+## Versioning on branches
+
+Feature branches never bump `lhc-release/version.json` or add a versioned NOTES/RELEASES section. The
+fork version is assigned by whoever cuts the release, after the set of branches going in is known.
+Branch notes go under an `unreleased` heading in NOTES.md.
