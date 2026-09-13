@@ -2877,6 +2877,9 @@ interface SidebarProjectsContentProps {
   agents: LhcAgentsSectionModel;
   onToggleAgentsExpanded: () => void;
   onToggleAgentsGroupByProject: () => void;
+  /** Fork: the Projects header collapses the whole tree. */
+  projectsExpanded: boolean;
+  onToggleProjectsExpanded: () => void;
 }
 
 interface LhcAgentsSectionModel {
@@ -2975,6 +2978,8 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     agents,
     onToggleAgentsExpanded,
     onToggleAgentsGroupByProject,
+    projectsExpanded,
+    onToggleProjectsExpanded,
   } = props;
 
   const handleProjectSortOrderChange = useCallback(
@@ -3119,8 +3124,21 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
         ) : null}
       </SidebarGroup>
       <SidebarGroup className="px-2 py-2">
-        <div className="mb-1 flex items-center justify-between pl-2 pr-1.5">
-          <span className="text-xs font-medium text-sidebar-muted-foreground/80">Projects</span>
+        <div className="mb-1 flex items-center justify-between pr-1.5">
+          {/* Fork: header collapses the tree; sort and add-project stay on it. */}
+          <button
+            type="button"
+            aria-expanded={projectsExpanded}
+            aria-label="Projects"
+            data-testid="lhc-projects-header"
+            className="flex h-6 min-w-0 flex-1 cursor-pointer items-center gap-1 rounded-md pl-1.5 text-left text-xs font-medium text-sidebar-muted-foreground/80 hover:bg-foreground/6 hover:text-sidebar-foreground"
+            onClick={onToggleProjectsExpanded}
+          >
+            <ChevronRightIcon
+              className={`size-3.5 shrink-0 transition-transform duration-150 ${projectsExpanded ? "rotate-90" : ""}`}
+            />
+            <span className="truncate">Projects</span>
+          </button>
           <div className="flex items-center gap-1">
             <ProjectSortMenu
               projectSortOrder={projectSortOrder}
@@ -3150,7 +3168,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
           </div>
         </div>
 
-        {isManualProjectSorting ? (
+        {!projectsExpanded ? null : isManualProjectSorting ? (
           <DndContext
             sensors={projectDnDSensors}
             collisionDetection={projectCollisionDetection}
@@ -3225,7 +3243,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
           </SidebarMenu>
         )}
 
-        {projectsLength === 0 && (
+        {projectsExpanded && projectsLength === 0 && (
           <div className="px-2 pt-4 text-center text-secondary-label text-xs">No projects yet</div>
         )}
       </SidebarGroup>
@@ -3918,6 +3936,10 @@ export default function LhcSidebar() {
   const handleToggleAgentsGroupByProject = useCallback(() => {
     updateSettings({ lhcAgentsGroupByProject: !lhcAgentsGroupByProject });
   }, [lhcAgentsGroupByProject, updateSettings]);
+  const lhcProjectsExpanded = useClientSettings((settings) => settings.lhcProjectsExpanded);
+  const handleToggleProjectsExpanded = useCallback(() => {
+    updateSettings({ lhcProjectsExpanded: !lhcProjectsExpanded });
+  }, [lhcProjectsExpanded, updateSettings]);
 
   return (
     <>
@@ -3966,6 +3988,8 @@ export default function LhcSidebar() {
         agents={lhcAgents}
         onToggleAgentsExpanded={handleToggleAgentsExpanded}
         onToggleAgentsGroupByProject={handleToggleAgentsGroupByProject}
+        projectsExpanded={lhcProjectsExpanded}
+        onToggleProjectsExpanded={handleToggleProjectsExpanded}
       />
       <SidebarChromeFooter />
     </>

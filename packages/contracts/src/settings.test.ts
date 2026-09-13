@@ -320,6 +320,7 @@ describe("ClientSettings sidebar", () => {
     expect(() => decodeClientSettings({ sidebarLayout: "grid" })).toThrow();
     expect(decodeClientSettings({}).lhcAgentsExpanded).toBe(true);
     expect(decodeClientSettings({}).lhcAgentsGroupByProject).toBe(false);
+    expect(decodeClientSettings({}).lhcProjectsExpanded).toBe(true);
     expect(
       decodeClientSettingsPatch({ lhcAgentsGroupByProject: true }).lhcAgentsGroupByProject,
     ).toBe(true);
