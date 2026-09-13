@@ -9,6 +9,8 @@ import {
   ArchiveIcon,
   ArrowUpDownIcon,
   ChevronRightIcon,
+  PinIcon,
+  PinOffIcon,
   FolderPlusIcon,
   Globe2Icon,
   SearchIcon,
@@ -327,6 +329,8 @@ function buildThreadJumpLabelMap(input: {
 }
 
 interface SidebarThreadRowProps {
+  /** Fork: hover pin/unpin action (Projects rows pin as agent, Agents rows unpin). */
+  pinAction: LhcPinAction | null;
   thread: SidebarThreadSummary;
   orderedProjectThreadKeys: readonly string[];
   isActive: boolean;
@@ -394,6 +398,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     attemptArchiveThread,
     openPrLink,
     thread,
+    pinAction,
   } = props;
   const threadRef = scopeThreadRef(thread.environmentId, thread.id);
   const threadKey = scopedThreadKey(threadRef);
@@ -803,6 +808,42 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               isRemoteThread ? "max-sm:min-w-24" : "max-sm:min-w-20"
             }`}
           >
+            {pinAction && !isConfirmingArchive ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <div className="pointer-events-none absolute top-1/2 right-6 -translate-y-1/2 opacity-0 transition-opacity duration-150 max-sm:pointer-events-auto max-sm:opacity-100 group-hover/menu-sub-item:pointer-events-auto group-hover/menu-sub-item:opacity-100 group-focus-within/menu-sub-item:pointer-events-auto group-focus-within/menu-sub-item:opacity-100">
+                      <button
+                        type="button"
+                        data-thread-selection-safe
+                        data-testid={`thread-${pinAction.kind}-${thread.id}`}
+                        aria-label={
+                          pinAction.kind === "pin"
+                            ? `Pin ${thread.title} as agent`
+                            : `Unpin ${thread.title}`
+                        }
+                        className={SIDEBAR_ICON_ACTION_BUTTON_CLASS}
+                        onPointerDown={stopPropagationOnPointerDown}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          pinAction.run(threadRef);
+                        }}
+                      >
+                        {pinAction.kind === "pin" ? (
+                          <PinIcon className="size-3.5" />
+                        ) : (
+                          <PinOffIcon className="size-3.5" />
+                        )}
+                      </button>
+                    </div>
+                  }
+                />
+                <TooltipPopup side="top">
+                  {pinAction.kind === "pin" ? "Pin as agent" : "Unpin"}
+                </TooltipPopup>
+              </Tooltip>
+            ) : null}
             {isConfirmingArchive ? (
               <button
                 ref={handleConfirmArchiveRef}
@@ -908,7 +949,13 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   );
 });
 
+type LhcPinAction = {
+  readonly kind: "pin" | "unpin";
+  readonly run: (threadRef: ScopedThreadRef) => void;
+};
+
 interface SidebarProjectThreadListProps {
+  pinAction: LhcPinAction | null;
   projectKey: string;
   projectExpanded: boolean;
   hasOverflowingThreads: boolean;
@@ -964,6 +1011,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
   props: SidebarProjectThreadListProps,
 ) {
   const {
+    pinAction,
     projectKey,
     projectExpanded,
     hasOverflowingThreads,
@@ -1023,6 +1071,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
           return (
             <SidebarThreadRow
               key={threadKey}
+              pinAction={pinAction}
               thread={thread}
               orderedProjectThreadKeys={orderedProjectThreadKeys}
               isActive={activeRouteThreadKey === threadKey}
@@ -1156,6 +1205,30 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     reportFailure: false,
   });
   const updateSettings = useUpdateClientSettings();
+  // Fork: pin/unpin reuse the shared thread actions (the Theo view's handlers).
+  const { pinThread, unpinThread } = useThreadActions();
+  const runPinAction = useCallback(
+    (threadRef: ScopedThreadRef) => {
+      void (async () => {
+        const result = await (agentsMode ? unpinThread(threadRef) : pinThread(threadRef));
+        if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+          const error = squashAtomCommandFailure(result);
+          toastManager.add(
+            stackedThreadToast({
+              type: "error",
+              title: agentsMode ? "Failed to unpin thread" : "Failed to pin thread",
+              description: error instanceof Error ? error.message : "An error occurred.",
+            }),
+          );
+        }
+      })();
+    },
+    [agentsMode, pinThread, unpinThread],
+  );
+  const pinAction = useMemo(
+    (): LhcPinAction => ({ kind: agentsMode ? "unpin" : "pin", run: runPinAction }),
+    [agentsMode, runPinAction],
+  );
   const sidebarThreadPreviewCount = useClientSettings<SidebarThreadPreviewCount>(
     (settings) => settings.sidebarThreadPreviewCount,
   );
@@ -2208,6 +2281,8 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
             ? [{ id: "new-thread-on-branch", label: `New thread on ${thread.branch}` }]
             : []),
           { id: "rename", label: "Rename thread" },
+          // Fork: move between Agents and Projects.
+          agentsMode ? { id: "unpin", label: "Unpin" } : { id: "pin", label: "Pin as agent" },
           { id: "mark-unread", label: "Mark unread" },
           { id: "copy-path", label: "Copy Path" },
           { id: "copy-thread-id", label: "Copy Thread ID" },
@@ -2252,6 +2327,10 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
 
       if (clicked === "rename") {
         startThreadRename(threadKey, thread.title);
+        return;
+      }
+      if (clicked === "pin" || clicked === "unpin") {
+        runPinAction(threadRef);
         return;
       }
 
@@ -2303,6 +2382,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       }
     },
     [
+      agentsMode,
       appSettingsConfirmThreadDelete,
       copyPathToClipboard,
       copyThreadIdToClipboard,
@@ -2314,6 +2394,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       project.projectKey,
       project.workspaceRoot,
       router,
+      runPinAction,
       setOpenMobile,
       startThreadRename,
     ],
@@ -2433,6 +2514,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       )}
 
       <SidebarProjectThreadList
+        pinAction={pinAction}
         projectKey={project.projectKey}
         projectExpanded={projectExpanded}
         hasOverflowingThreads={hasOverflowingThreads}
