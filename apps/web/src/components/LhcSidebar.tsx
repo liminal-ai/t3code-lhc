@@ -1359,17 +1359,19 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   // like elevated cards while settled threads were plain rows, leaving neither
   // a useful hierarchy nor a reliable hover cue. Status now lives in the row
   // content; surface is reserved for interaction (hover, multi-select, route).
+  // Fork: the stock tokens (hover zinc-25, active white) vanish on a light
+  // sidebar, so hover, selection and the open thread get visible surfaces.
   const rowSurfaceClassName = cn(
     "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left outline-none select-none",
     props.isActive
-      ? "bg-sidebar-row-active text-sidebar-foreground"
+      ? "bg-foreground/10 text-sidebar-foreground ring-1 ring-inset ring-foreground/15"
       : isSelected
-        ? "bg-sidebar-row-selected text-sidebar-foreground"
+        ? "bg-foreground/7 text-sidebar-foreground ring-1 ring-inset ring-foreground/10"
         : hasUnsentDraft
-          ? cn(draftSurfaceClassName, "text-sidebar-foreground")
+          ? cn(draftSurfaceClassName, "text-sidebar-foreground hover:bg-foreground/6")
           : shouldRecede
-            ? "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-            : "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover",
+            ? "text-sidebar-muted-foreground/75 hover:bg-foreground/6 hover:text-sidebar-foreground"
+            : "bg-transparent text-sidebar-foreground hover:bg-foreground/6",
     isInFlight &&
       !props.isActive &&
       !isSelected &&
