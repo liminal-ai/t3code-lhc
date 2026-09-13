@@ -314,10 +314,10 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["response output old compatibility"],
   },
   {
-    id: "legacy-sidebar",
+    id: "sidebar",
     title: "Sidebar",
     to: "/settings/general",
-    searchTerms: ["project thread tree old flat list lhc layout view legacy"],
+    searchTerms: ["threads projects lhc layout view agents tree flat list legacy"],
   },
   {
     id: "keybindings",

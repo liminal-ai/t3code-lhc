@@ -1883,7 +1883,6 @@ const LEGACY_FEATURE_TARGET_IDS: ReadonlySet<string> = new Set([
   "legacy-plan-mode",
   "legacy-context-window-indicator",
   "legacy-token-streaming",
-  "legacy-sidebar",
 ]);
 
 /**
@@ -1999,43 +1998,6 @@ function LegacyFeaturesSection() {
                 />
               }
             />
-            <SettingsRow
-              {...searchableSetting("legacy-sidebar")}
-              description="Threads (flat), Projects (per-project trees), or LHC (compact rows ordered by last turn)."
-              control={
-                <Select
-                  value={resolveSidebarLayout({
-                    settingsHydrated: true,
-                    sidebarLayout: settings.sidebarLayout,
-                    legacySidebarEnabled: settings.legacySidebarEnabled,
-                  })}
-                  onValueChange={(value) => {
-                    updateSettings(sidebarLayoutSettingsPatch(value as SidebarLayout));
-                  }}
-                >
-                  <SelectTrigger size="sm" className="w-full sm:w-40" aria-label="Sidebar">
-                    <SelectValue>
-                      {
-                        SIDEBAR_LAYOUT_LABELS[
-                          resolveSidebarLayout({
-                            settingsHydrated: true,
-                            sidebarLayout: settings.sidebarLayout,
-                            legacySidebarEnabled: settings.legacySidebarEnabled,
-                          })
-                        ]
-                      }
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectPopup align="end" alignItemWithTrigger={false}>
-                    {(["threads", "projects", "lhc"] as const).map((layout) => (
-                      <SelectItem key={layout} hideIndicator value={layout}>
-                        {SIDEBAR_LAYOUT_LABELS[layout]}
-                      </SelectItem>
-                    ))}
-                  </SelectPopup>
-                </Select>
-              }
-            />
           </div>
         </CollapsiblePanel>
       </Collapsible>
@@ -2113,6 +2075,43 @@ export function GeneralSettingsPanel() {
     <SettingsPageContainer>
       <SharedSettingsMismatchAlert />
       <SettingsSection id="organization" title="Organization">
+        <SettingsRow
+          {...searchableSetting("sidebar")}
+          description="Threads (flat), Projects (per-project trees), or LHC (compact rows ordered by last turn)."
+          control={
+            <Select
+              value={resolveSidebarLayout({
+                settingsHydrated: true,
+                sidebarLayout: settings.sidebarLayout,
+                legacySidebarEnabled: settings.legacySidebarEnabled,
+              })}
+              onValueChange={(value) => {
+                updateSettings(sidebarLayoutSettingsPatch(value as SidebarLayout));
+              }}
+            >
+              <SelectTrigger size="sm" className="w-full sm:w-40" aria-label="Sidebar">
+                <SelectValue>
+                  {
+                    SIDEBAR_LAYOUT_LABELS[
+                      resolveSidebarLayout({
+                        settingsHydrated: true,
+                        sidebarLayout: settings.sidebarLayout,
+                        legacySidebarEnabled: settings.legacySidebarEnabled,
+                      })
+                    ]
+                  }
+                </SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="end" alignItemWithTrigger={false}>
+                {(["threads", "projects", "lhc"] as const).map((layout) => (
+                  <SelectItem key={layout} hideIndicator value={layout}>
+                    {SIDEBAR_LAYOUT_LABELS[layout]}
+                  </SelectItem>
+                ))}
+              </SelectPopup>
+            </Select>
+          }
+        />
         <SettingsRow
           {...searchableSetting("project-grouping")}
           description="Combine matching repositories across environments."

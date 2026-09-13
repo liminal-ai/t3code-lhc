@@ -388,10 +388,11 @@ export function resolveSidebarLayout(input: {
   readonly sidebarLayout: SidebarLayout | undefined;
   readonly legacySidebarEnabled: boolean;
 }): SidebarLayout {
-  if (!input.settingsHydrated) return "threads";
+  // Fork default is the LHC view; held there until hydration so the common case never remounts.
+  if (!input.settingsHydrated) return "lhc";
   if (input.sidebarLayout !== undefined) return input.sidebarLayout;
   if (input.legacySidebarEnabled) return "projects";
-  return "threads";
+  return "lhc";
 }
 
 /** Fork-only: the patch a Settings pick writes. Both keys move together so

@@ -425,7 +425,7 @@ describe("onboarding completion persistence", () => {
 });
 
 describe("sidebar layout (fork)", () => {
-  it("resolves the set value, else the legacy switch, and threads before hydration", () => {
+  it("resolves the set value, else the legacy switch, else the LHC default (also before hydration)", () => {
     expect(
       resolveSidebarLayout({
         settingsHydrated: true,
@@ -446,14 +446,14 @@ describe("sidebar layout (fork)", () => {
         sidebarLayout: undefined,
         legacySidebarEnabled: false,
       }),
-    ).toBe("threads");
+    ).toBe("lhc");
     expect(
       resolveSidebarLayout({
         settingsHydrated: false,
-        sidebarLayout: "lhc",
+        sidebarLayout: "projects",
         legacySidebarEnabled: true,
       }),
-    ).toBe("threads");
+    ).toBe("lhc");
   });
 
   it("writes both keys for every pick", () => {

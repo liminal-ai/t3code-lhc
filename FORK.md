@@ -262,9 +262,10 @@ sort and add-project buttons. Rows are one line with visible hover, selected
 and open surfaces. Theo's active / snoozed / settled shelves do not exist here.
 
 Selection is the client setting `sidebarLayout: "threads" | "projects" |
-"lhc"` (**Settings → General → Legacy features → Sidebar**), persisted in the
-browser like every client setting. Unset defers to upstream's
-`legacySidebarEnabled` (`true` → Projects). The select writes both keys so
+"lhc"` (**Settings → General → Sidebar**, three options), persisted in the
+browser like every client setting. The fork default is LHC: an explicit pick
+wins; unset with upstream's `legacySidebarEnabled: true` is Projects; otherwise
+LHC. Upstream's stock default (Threads) is one pick away. The select writes both keys so
 upstream readers of the legacy switch agree with the chosen view. Section state
 lives in client settings `lhcAgentsExpanded`, `lhcAgentsGroupByProject`,
 `lhcProjectsExpanded`.
