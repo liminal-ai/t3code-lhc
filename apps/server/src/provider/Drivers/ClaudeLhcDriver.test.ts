@@ -1,3 +1,4 @@
+import { ClaudeLhcSettings, ClaudeSettings } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 
 import { BUILT_IN_DRIVERS } from "../builtInDrivers.ts";
@@ -10,7 +11,8 @@ describe("ClaudeLhcDriver", () => {
     expect(ClaudeDriver.driverKind).toBe("claudeAgent");
     expect(ClaudeLhcDriver.metadata.displayName).toBe("Claude LHC");
     expect(ClaudeLhcDriver.metadata.supportsMultipleInstances).toBe(true);
-    expect(ClaudeLhcDriver.configSchema).toBe(ClaudeDriver.configSchema);
+    expect(ClaudeLhcDriver.configSchema).toBe(ClaudeLhcSettings);
+    expect(ClaudeDriver.configSchema).toBe(ClaudeSettings);
     expect(BUILT_IN_DRIVERS.map((driver) => driver.driverKind)).toContain("claude-lhc");
     expect(new Set(BUILT_IN_DRIVERS.map((driver) => driver.driverKind)).size).toBe(
       BUILT_IN_DRIVERS.length,
@@ -26,5 +28,14 @@ describe("ClaudeLhcDriver", () => {
 
   it("has no lhc flag in its default config", () => {
     expect("lhc" in ClaudeLhcDriver.defaultConfig()).toBe(false);
+  });
+
+  it("defaults both token windows", () => {
+    expect(ClaudeLhcDriver.defaultConfig()).toMatchObject({
+      autoCompactWindow: "380000",
+      lhcLowerBound: "150000",
+    });
+    expect(ClaudeDriver.defaultConfig().autoCompactWindow).toBe("");
+    expect("lhcLowerBound" in ClaudeDriver.defaultConfig()).toBe(false);
   });
 });

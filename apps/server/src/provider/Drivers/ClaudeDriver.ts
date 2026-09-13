@@ -61,7 +61,6 @@ import {
 } from "../providerUpdateSettings.ts";
 import { makeClaudeCapabilitiesCacheKey, makeClaudeContinuationGroupKey } from "./ClaudeHome.ts";
 import { discoverClaudeSkills } from "./ClaudeSkills.ts";
-const decodeClaudeSettings = Schema.decodeSync(ClaudeSettings);
 
 const STOCK_DRIVER_KIND = ProviderDriverKind.make("claudeAgent");
 const CAPABILITIES_PROBE_TTL = Duration.minutes(5);
@@ -97,7 +96,7 @@ export type ClaudeDriverEnv =
   | ServerSettingsService;
 
 /** What a driver built on the Claude runtime supplies beyond the stock kind. */
-export interface ClaudeDriverSpec {
+export interface ClaudeDriverSpec<Config extends ClaudeSettings = ClaudeSettings> {
   readonly driverKind: ProviderDriverKind;
   readonly displayName: string;
   /** Replaces the SDK's `query` for every generation (the sidecar seam). */
@@ -106,18 +105,25 @@ export interface ClaudeDriverSpec {
   }) => NonNullable<ClaudeAdapterLiveOptions["createQuery"]>;
   /** Maps the stock home-keyed continuation key; instances of different kinds must not share one. */
   readonly continuationGroupKey?: (stockKey: string) => string;
+  /** Defaults to stock `ClaudeSettings`. Claude LHC passes `ClaudeLhcSettings`. */
+  readonly configSchema?: Schema.Codec<Config, unknown>;
 }
 
-export const makeClaudeDriver = (
-  spec: ClaudeDriverSpec,
-): ProviderDriver<ClaudeSettings, ClaudeDriverEnv> => ({
+const claudeDriverConfigSchema = <Config extends ClaudeSettings>(
+  spec: ClaudeDriverSpec<Config>,
+): Schema.Codec<Config, unknown> =>
+  spec.configSchema ?? (ClaudeSettings as unknown as Schema.Codec<Config, unknown>);
+
+export const makeClaudeDriver = <Config extends ClaudeSettings = ClaudeSettings>(
+  spec: ClaudeDriverSpec<Config>,
+): ProviderDriver<Config, ClaudeDriverEnv> => ({
   driverKind: spec.driverKind,
   metadata: {
     displayName: spec.displayName,
     supportsMultipleInstances: true,
   },
-  configSchema: ClaudeSettings,
-  defaultConfig: (): ClaudeSettings => decodeClaudeSettings({}),
+  configSchema: claudeDriverConfigSchema(spec),
+  defaultConfig: (): Config => Schema.decodeSync(claudeDriverConfigSchema(spec))({}),
   create: ({ instanceId, displayName, accentColor, environment, enabled, config }) =>
     Effect.gen(function* () {
       const DRIVER_KIND = spec.driverKind;

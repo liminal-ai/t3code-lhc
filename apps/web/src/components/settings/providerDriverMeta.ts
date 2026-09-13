@@ -1,5 +1,6 @@
 import {
   AntigravitySettings,
+  ClaudeLhcSettings,
   ClaudeSettings,
   CodexSettings,
   CursorSettings,
@@ -61,7 +62,7 @@ const PROVIDER_CLIENT_DEFINITIONS: readonly ProviderClientDefinition[] = [
     value: CLAUDE_LHC_DRIVER_KIND,
     label: "Claude LHC",
     icon: ClaudeAI,
-    settingsSchema: ClaudeSettings,
+    settingsSchema: ClaudeLhcSettings,
   },
   {
     value: ProviderDriverKind.make("cursor"),
