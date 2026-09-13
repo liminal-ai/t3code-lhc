@@ -49,17 +49,13 @@ import {
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { BUILT_IN_DRIVERS, type BuiltInDriversEnv } from "../builtInDrivers.ts";
 import {
-  type ForkInstanceSeedAvailability,
-  ForkInstanceSeedAvailabilityState,
-  NO_FORK_INSTANCE_SEEDS,
+  persistForkInstanceSeeds,
   resolveForkInstanceSeedAvailability,
-  seedForkProviderInstances,
 } from "../forkInstanceSeed.ts";
 import { ProviderInstanceRegistry } from "../Services/ProviderInstanceRegistry.ts";
 import { ProviderInstanceRegistryMutator } from "../Services/ProviderInstanceRegistryMutator.ts";
@@ -80,7 +76,6 @@ import { ProviderInstanceRegistryMutableLayer } from "./ProviderInstanceRegistry
  */
 export const deriveProviderInstanceConfigMap = (
   settings: ServerSettings,
-  forkSeeds: ForkInstanceSeedAvailability = NO_FORK_INSTANCE_SEEDS,
 ): ProviderInstanceConfigMap => {
   const merged: Record<string, ProviderInstanceConfig> = { ...settings.providerInstances };
 
@@ -109,9 +104,20 @@ export const deriveProviderInstanceConfigMap = (
     };
   }
 
-  // Fork-only: the LHC seeds ride the same ephemeral, explicit-wins rule.
-  return seedForkProviderInstances(merged as ProviderInstanceConfigMap, forkSeeds);
+  return merged as ProviderInstanceConfigMap;
 };
+
+/**
+ * Fork-only: probe the fork binaries and persist any missing seed row through
+ * the settings-update command. Returns the settings to derive from: the
+ * post-write settings when a row was written (the write also emits a change
+ * event, which reaches the watcher with the rows present, so that pass writes
+ * nothing), otherwise the input.
+ */
+const seedForkInstances = (settings: ServerSettings) =>
+  resolveForkInstanceSeedAvailability().pipe(
+    Effect.flatMap((availability) => persistForkInstanceSeeds(settings, availability)),
+  );
 
 /**
  * Layer that consumes `ProviderInstanceRegistryMutator` and forks a
@@ -128,15 +134,16 @@ const SettingsWatcherLive = Layer.effectDiscard(
   Effect.gen(function* () {
     const mutator = yield* ProviderInstanceRegistryMutator;
     const serverSettings = yield* ServerSettingsService;
-    const forkSeedState = yield* ForkInstanceSeedAvailabilityState;
     const settingsChanges = yield* serverSettings.subscribeChanges;
     yield* settingsChanges.pipe(
       Stream.runForEach((next) =>
-        resolveForkInstanceSeedAvailability()
+        seedForkInstances(next)
           .pipe(
-            Effect.tap((forkSeeds) => Ref.set(forkSeedState, forkSeeds)),
-            Effect.flatMap((forkSeeds) =>
-              mutator.reconcile(deriveProviderInstanceConfigMap(next, forkSeeds)),
+            Effect.catchCause((cause) =>
+              Effect.logError("fork instance seed persist failed", cause).pipe(Effect.as(next)),
+            ),
+            Effect.flatMap((settings) =>
+              mutator.reconcile(deriveProviderInstanceConfigMap(settings)),
             ),
           )
           .pipe(
@@ -176,12 +183,20 @@ export const ProviderInstanceRegistryHydrationLive: Layer.Layer<
     const initialSettings: ServerSettings | undefined = yield* serverSettings.getSettings.pipe(
       Effect.orElseSucceed(() => undefined),
     );
-    const forkSeeds = yield* resolveForkInstanceSeedAvailability();
-    yield* Ref.set(yield* ForkInstanceSeedAvailabilityState, forkSeeds);
-    const initialConfigMap =
+    const seededSettings =
       initialSettings === undefined
+        ? undefined
+        : yield* seedForkInstances(initialSettings).pipe(
+            Effect.catchCause((cause) =>
+              Effect.logError("fork instance seed persist failed", cause).pipe(
+                Effect.as(initialSettings),
+              ),
+            ),
+          );
+    const initialConfigMap =
+      seededSettings === undefined
         ? ({} as ProviderInstanceConfigMap)
-        : deriveProviderInstanceConfigMap(initialSettings, forkSeeds);
+        : deriveProviderInstanceConfigMap(seededSettings);
 
     const mutableLayer = ProviderInstanceRegistryMutableLayer({
       drivers: BUILT_IN_DRIVERS,

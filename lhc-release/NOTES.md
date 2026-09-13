@@ -1,3 +1,9 @@
+# 0.0.40-lhc.6
+
+Upstream remains v0.0.40. Sidecar pin LHC `5f181303`.
+
+- **Default LHC instances are now written to settings.** lhc.5 kept `claude-lhc`, `codex-lhc`, and `grok-lhc` in memory only, and the web picker hid them. Each row is now written once into `settings.json` the first time its binary is detected while the id is absent, through the normal settings save. An existing row with the same id is never touched. Treat a seeded row like a driver default: disable it rather than delete it; a deleted row comes back on the next settings change while the binary is present.
+
 # 0.0.40-lhc.5
 
 Upstream remains v0.0.40. Sidecar pin LHC `5f181303`.

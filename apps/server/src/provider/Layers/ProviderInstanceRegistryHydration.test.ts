@@ -2,6 +2,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import {
   DEFAULT_SERVER_SETTINGS,
+  ProviderDriverKind,
   ProviderInstanceId,
   ServerSettings as ContractServerSettings,
 } from "@t3tools/contracts";
@@ -27,7 +28,7 @@ import * as ServerConfig from "../../config.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
 import * as ServerSettingsModule from "../../serverSettings.ts";
 import { AntigravityInstallation } from "../AntigravityInstallation.ts";
-import { ForkInstanceSeedAvailabilityState, NO_FORK_INSTANCE_SEEDS } from "../forkInstanceSeed.ts";
+import { FORK_INSTANCE_SEEDS } from "../forkInstanceSeed.ts";
 import * as ModelManifest from "../ModelManifest.ts";
 import * as OpenCodeRuntime from "../opencodeRuntime.ts";
 import * as ProviderInstanceRegistry from "../Services/ProviderInstanceRegistry.ts";
@@ -79,7 +80,8 @@ const makeMutableServerSettingsService = (initial: ContractServerSettings) =>
   Effect.gen(function* () {
     const settingsRef = yield* Ref.make(initial);
     const changes = yield* PubSub.unbounded<ContractServerSettings>();
-    return {
+    const writes = yield* Ref.make(0);
+    const service = {
       start: Effect.void,
       ready: Effect.void,
       getSettings: Ref.get(settingsRef),
@@ -88,6 +90,7 @@ const makeMutableServerSettingsService = (initial: ContractServerSettings) =>
           const next = applyServerSettingsPatch(yield* Ref.get(settingsRef), patch);
           encodeServerSettings(next);
           yield* Ref.set(settingsRef, next);
+          yield* Ref.update(writes, (n) => n + 1);
           yield* PubSub.publish(changes, next);
           return next;
         }),
@@ -100,6 +103,7 @@ const makeMutableServerSettingsService = (initial: ContractServerSettings) =>
         );
       },
     } satisfies ServerSettingsModule.ServerSettingsService["Service"];
+    return { ...service, settingsRef, writes };
   });
 
 // Every stock provider disabled so nothing on the host is probed; the seeded
@@ -119,7 +123,7 @@ const quietSettings = decodeServerSettings(
 describe("ProviderInstanceRegistryHydration fork seeds", () => {
   // live clock: the reconcile watcher runs on real fibers and the poll below sleeps
   it.live(
-    "seeds codex-lhc at boot and grok-lhc after a settings change once its binary appears",
+    "persists codex-lhc at boot and grok-lhc after a settings change once its binary appears, each once",
     () =>
       Effect.gen(function* () {
         const fileSystem = yield* FileSystem.FileSystem;
@@ -142,7 +146,6 @@ describe("ProviderInstanceRegistryHydration fork seeds", () => {
         yield* writeScript("codex-lhc");
 
         const serverSettings = yield* makeMutableServerSettingsService(quietSettings);
-        const seedState = Ref.makeUnsafe(NO_FORK_INSTANCE_SEEDS);
         const scope = yield* Scope.make();
         yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
         const services = yield* Layer.build(
@@ -174,7 +177,6 @@ describe("ProviderInstanceRegistryHydration fork seeds", () => {
               }),
             ),
             Layer.provideMerge(Layer.succeed(CommandResolutionCache, new Map())),
-            Layer.provideMerge(Layer.succeed(ForkInstanceSeedAvailabilityState, seedState)),
             Layer.provideMerge(NodeServices.layer),
           ),
         ).pipe(Scope.provide(scope));
@@ -194,11 +196,14 @@ describe("ProviderInstanceRegistryHydration fork seeds", () => {
           const codexLhc = yield* registry.getInstance(ProviderInstanceId.make("codex-lhc"));
           assert.equal(codexLhc?.driverKind, "codex");
           assert.equal(codexLhc?.displayName, "Codex LHC");
-          assert.deepEqual(yield* Ref.get(seedState), {
-            "claude-lhc": false,
-            "codex-lhc": true,
-            "grok-lhc": false,
-          });
+          // the row was written into settings, once, with the seed values; nothing else
+          const bootSettings = yield* Ref.get(serverSettings.settingsRef);
+          assert.deepEqual(
+            bootSettings.providerInstances[ProviderInstanceId.make("codex-lhc")],
+            FORK_INSTANCE_SEEDS["codex-lhc"],
+          );
+          assert.deepEqual(Object.keys(bootSettings.providerInstances), ["codex-lhc"]);
+          assert.equal(yield* Ref.get(serverSettings.writes), 1);
 
           // A fork binary installed later shows up on the next settings change.
           yield* writeScript("grok-lhc");
@@ -210,7 +215,40 @@ describe("ProviderInstanceRegistryHydration fork seeds", () => {
             afterChange = yield* ids();
           }
           assert.include(afterChange, grokLhcId);
-          assert.equal((yield* Ref.get(seedState))["grok-lhc"], true);
+          // the benign change plus exactly one seed write; the seed write's own
+          // change emission reached the watcher with the row present and wrote nothing
+          let writes = yield* Ref.get(serverSettings.writes);
+          for (let attempt = 0; attempt < 40 && writes < 3; attempt++) {
+            yield* Effect.sleep("25 millis");
+            writes = yield* Ref.get(serverSettings.writes);
+          }
+          yield* Effect.sleep("200 millis");
+          assert.equal(yield* Ref.get(serverSettings.writes), 3);
+          const later = yield* Ref.get(serverSettings.settingsRef);
+          assert.deepEqual(later.providerInstances[grokLhcId], FORK_INSTANCE_SEEDS["grok-lhc"]);
+          assert.deepEqual(
+            later.providerInstances[ProviderInstanceId.make("codex-lhc")],
+            FORK_INSTANCE_SEEDS["codex-lhc"],
+          );
+
+          // an existing row that differs from the seed is left alone and triggers no write
+          yield* serverSettings.updateSettings({
+            providerInstances: {
+              ...later.providerInstances,
+              [ProviderInstanceId.make("codex-lhc")]: {
+                driver: ProviderDriverKind.make("codex"),
+                config: { binaryPath: "/opt/codex" },
+              },
+            },
+          });
+          yield* Effect.sleep("300 millis");
+          assert.equal(yield* Ref.get(serverSettings.writes), 4);
+          assert.deepEqual(
+            (yield* Ref.get(serverSettings.settingsRef)).providerInstances[
+              ProviderInstanceId.make("codex-lhc")
+            ]?.config,
+            { binaryPath: "/opt/codex" },
+          );
         }).pipe(Effect.provide(services));
       }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );

@@ -216,19 +216,30 @@ The seed leaves both at their defaults. On a locked-down box set
 Stock synthesizes one instance per built-in driver from `providers.<kind>`
 (`codex`, `claudeAgent`, `cursor`, `grok`, `opencode`, `antigravity`), keyed by
 the driver kind, with the schema-default binary name on PATH. The fork adds
-three rows the same way (`apps/server/src/provider/forkInstanceSeed.ts`):
-`claude-lhc` (driver `claude-lhc`), `codex-lhc` (driver `codex`, binary
-`codex-lhc`, update source LHC) and `grok-lhc` (driver `grok`, binary
-`grok-lhc`), each enabled, accent `#7c3aed`, and present only while its fork
-binary resolves: the sidecar file `CLAUDE_LHC_SIDECAR` points at, `codex-lhc`
-and `grok-lhc` on PATH. Seeds are never written to settings.json; an explicit
-`providerInstances` entry with the same id always wins, and editing a seeded
-row in Settings writes it explicit. Availability is probed when settings load
-and on every settings change, exactly when the stock mirror is re-derived. The
-Providers refresh button only re-probes snapshots, so a fork binary installed
-later appears on the next settings save or server restart. The stock `codex`
-and `grok` rows keep their schema-default names, so which build they run is
-whatever `codex` / `grok` resolve to on PATH.
+three rows (`apps/server/src/provider/forkInstanceSeed.ts`): `claude-lhc`
+(driver `claude-lhc`), `codex-lhc` (driver `codex`, binary `codex-lhc`, update
+source LHC) and `grok-lhc` (driver `grok`, binary `grok-lhc`), each enabled,
+accent `#7c3aed`. A row is written once into `settings.json`
+(`providerInstances`) the first time its fork binary is detected while its id
+is absent: the sidecar file `CLAUDE_LHC_SIDECAR` points at, `codex-lhc` and
+`grok-lhc` on PATH. The write goes through the server's settings-update
+command (the same path as a Settings save: validation, normalize, atomic
+write, change emission), and logs `provider.instance.seed.persisted` per row.
+The rows must be persisted rather than merged in memory because the web client
+lists a non-default instance only when it exists in `providerInstances`
+(lhc.5 shipped an in-memory seed and the picker hid it).
+
+Rules: an existing row with the same id is never touched, whatever it says
+(explicit wins, never rewritten). A seeded row behaves like a driver default:
+disable it, do not delete it; a deleted row comes back on the next settings
+change or server restart while the binary is present. Nothing is written
+while the binary is absent, and a binary removed later leaves its row (the
+instance then shows its own binary error). Availability is probed when
+settings load and on every settings change; the Providers refresh button only
+re-probes snapshots, so a fork binary installed later is written on the next
+settings save or server restart. The stock `codex` and `grok` rows keep their
+schema-default names, so which build they run is whatever `codex` / `grok`
+resolve to on PATH.
 
 ## Never run here
 

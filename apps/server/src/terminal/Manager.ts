@@ -63,7 +63,6 @@ import * as ServerConfig from "../config.ts";
 import { mergeProviderInstanceEnvironment } from "../provider/ProviderInstanceEnvironment.ts";
 import { resolveCodexHomeLayout } from "../provider/Drivers/CodexHomeLayout.ts";
 import { makeClaudeEnvironment } from "../provider/Drivers/ClaudeHome.ts";
-import { ForkInstanceSeedAvailabilityState } from "../provider/forkInstanceSeed.ts";
 import { deriveProviderInstanceConfigMap } from "../provider/Layers/ProviderInstanceRegistryHydration.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import {
@@ -1359,8 +1358,7 @@ export const resolveProviderInstanceTerminalEnvironment = Effect.fn(
   const settings = yield* input.serverSettings.getSettings.pipe(
     Effect.mapError((cause) => new TerminalProviderEnvironmentError({ providerInstanceId, cause })),
   );
-  const forkSeeds = yield* Ref.get(yield* ForkInstanceSeedAvailabilityState);
-  const instance = deriveProviderInstanceConfigMap(settings, forkSeeds)[providerInstanceId];
+  const instance = deriveProviderInstanceConfigMap(settings)[providerInstanceId];
   if (instance === undefined) {
     return yield* new TerminalProviderInstanceNotFoundError({ providerInstanceId });
   }

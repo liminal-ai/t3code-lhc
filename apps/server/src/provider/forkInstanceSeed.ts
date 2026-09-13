@@ -3,35 +3,40 @@
  *
  * The stock legacy mirror in `ProviderInstanceRegistryHydration` synthesizes
  * one instance per built-in driver from `settings.providers.<kind>`. The
- * fork adds three more rows the same way, ephemeral and never written to
- * settings.json, each present only while its fork binary resolves:
+ * fork adds three rows by writing them once into settings.json, each the
+ * first time its fork binary is detected while its id is absent:
  *
  *   claude-lhc  driver claude-lhc  when CLAUDE_LHC_SIDECAR names an existing file
  *   codex-lhc   driver codex       when `codex-lhc` resolves on PATH
  *   grok-lhc    driver grok        when `grok-lhc` resolves on PATH
  *
- * An explicit `providerInstances` entry with the same id always wins, as it
- * does for the mirror. Editing a seeded row in Settings writes it explicit.
- * Availability is probed when settings load and on every settings change,
- * which is exactly when the mirror is re-derived; the Providers refresh
- * button only re-probes snapshots, so a binary installed later shows up on
- * the next settings save or restart.
+ * The write goes through `ServerSettingsService.updateSettings`, the same
+ * command a Settings save uses (validation, normalize, atomic write, change
+ * emission). An existing row with the same id is never touched, whatever it
+ * says: a seeded row behaves like a driver default, so disable it rather
+ * than delete it; a deleted row comes back on the next settings change while
+ * the binary is present. Nothing is written while the binary is absent. The
+ * web client only lists non-default instances that exist in
+ * `settings.providerInstances`, which is why the rows must be persisted
+ * rather than merged in memory (lhc.5 defect).
+ *
+ * Availability is probed when settings load and on every settings change.
  *
  * @module provider/forkInstanceSeed
  */
 import {
   CLAUDE_LHC_DRIVER_KIND,
   type ProviderInstanceConfig,
-  type ProviderInstanceConfigMap,
   ProviderDriverKind,
   ProviderInstanceId,
+  type ServerSettings,
 } from "@t3tools/contracts";
 import { HostProcessEnvironment } from "@t3tools/shared/hostProcess";
 import { CommandResolutionCache, isCommandAvailable } from "@t3tools/shared/shell";
-import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
-import * as Ref from "effect/Ref";
+
+import { ServerSettingsService } from "../serverSettings.ts";
 
 export const FORK_INSTANCE_SEED_IDS = ["claude-lhc", "codex-lhc", "grok-lhc"] as const;
 export type ForkInstanceSeedId = (typeof FORK_INSTANCE_SEED_IDS)[number];
@@ -71,20 +76,47 @@ export const FORK_INSTANCE_SEEDS: Readonly<Record<ForkInstanceSeedId, ProviderIn
   },
 };
 
-/** Add every available seed whose id is not already in the map. Pure. */
-export const seedForkProviderInstances = (
-  map: ProviderInstanceConfigMap,
+/**
+ * Seed ids that are available and absent from `providerInstances`, in seed
+ * order. Pure. Presence is by id only: an existing row is never compared to
+ * the seed, so explicit rows always win.
+ */
+export const missingForkInstanceSeeds = (
+  providerInstances: ServerSettings["providerInstances"],
   availability: ForkInstanceSeedAvailability,
-): ProviderInstanceConfigMap => {
-  const merged: Record<string, ProviderInstanceConfig> = { ...map };
-  for (const seedId of FORK_INSTANCE_SEED_IDS) {
-    if (!availability[seedId]) continue;
-    const instanceId = ProviderInstanceId.make(seedId);
-    if (instanceId in merged) continue;
-    merged[instanceId] = FORK_INSTANCE_SEEDS[seedId];
+): ReadonlyArray<ForkInstanceSeedId> =>
+  FORK_INSTANCE_SEED_IDS.filter(
+    (seedId) => availability[seedId] && !Object.hasOwn(providerInstances, seedId),
+  );
+
+/**
+ * Write the missing seeds into settings.json through the settings-update
+ * command, once. Returns the settings after the write, or the input settings
+ * unchanged when there was nothing to write. The patch carries the full
+ * current `providerInstances` map plus the new rows (the patch schema has no
+ * rows-only form), built from the settings passed in at the moment of the
+ * write, as a Settings save does.
+ */
+export const persistForkInstanceSeeds = Effect.fn("persistForkInstanceSeeds")(function* (
+  settings: ServerSettings,
+  availability: ForkInstanceSeedAvailability,
+) {
+  const missing = missingForkInstanceSeeds(settings.providerInstances, availability);
+  if (missing.length === 0) return settings;
+  const providerInstances = { ...settings.providerInstances };
+  for (const seedId of missing) {
+    providerInstances[ProviderInstanceId.make(seedId)] = FORK_INSTANCE_SEEDS[seedId];
   }
-  return merged as ProviderInstanceConfigMap;
-};
+  const serverSettings = yield* ServerSettingsService;
+  const next = yield* serverSettings.updateSettings({ providerInstances });
+  for (const seedId of missing) {
+    yield* Effect.logInfo("provider.instance.seed.persisted", {
+      instanceId: seedId,
+      driver: FORK_INSTANCE_SEEDS[seedId].driver,
+    });
+  }
+  return next;
+});
 
 /**
  * Probe the fork binaries. PATH and CLAUDE_LHC_SIDECAR come from
@@ -110,14 +142,3 @@ export const resolveForkInstanceSeedAvailability = Effect.fn("resolveForkInstanc
     } satisfies ForkInstanceSeedAvailability;
   },
 );
-
-/**
- * Last probe result, shared by the registry hydration (writer) and any
- * other reader of the derived config map (the terminal manager). Defaults
- * to nothing seeded so code paths that never probe see the stock mirror.
- */
-export const ForkInstanceSeedAvailabilityState = Context.Reference<
-  Ref.Ref<ForkInstanceSeedAvailability>
->("t3code-lhc/ForkInstanceSeedAvailabilityState", {
-  defaultValue: () => Ref.makeUnsafe(NO_FORK_INSTANCE_SEEDS),
-});

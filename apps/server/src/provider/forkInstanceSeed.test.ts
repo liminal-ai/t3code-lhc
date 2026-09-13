@@ -2,104 +2,156 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import {
   DEFAULT_SERVER_SETTINGS,
-  type ProviderInstanceConfigMap,
   ProviderDriverKind,
   ProviderInstanceId,
+  type ServerSettings,
 } from "@t3tools/contracts";
 import { HostProcessEnvironment, HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { CommandResolutionCache } from "@t3tools/shared/shell";
+import { applyServerSettingsPatch } from "@t3tools/shared/serverSettings";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
+import * as Ref from "effect/Ref";
+import * as Stream from "effect/Stream";
 
 import { expandHomePath } from "../pathExpansion.ts";
+import * as ServerSettingsModule from "../serverSettings.ts";
 import { deriveProviderInstanceConfigMap } from "./Layers/ProviderInstanceRegistryHydration.ts";
 import {
   FORK_INSTANCE_SEED_IDS,
   FORK_INSTANCE_SEEDS,
+  missingForkInstanceSeeds,
   NO_FORK_INSTANCE_SEEDS,
+  persistForkInstanceSeeds,
   resolveForkInstanceSeedAvailability,
-  seedForkProviderInstances,
 } from "./forkInstanceSeed.ts";
 
 const ALL_SEEDS = { "claude-lhc": true, "codex-lhc": true, "grok-lhc": true } as const;
 
+/** In-memory settings service that counts writes; the patch path is the production one. */
+const makeCountingSettingsService = (initial: ServerSettings) =>
+  Effect.gen(function* () {
+    const settingsRef = yield* Ref.make(initial);
+    const writes = yield* Ref.make(0);
+    const service = {
+      start: Effect.void,
+      ready: Effect.void,
+      getSettings: Ref.get(settingsRef),
+      updateSettings: (patch) =>
+        Effect.gen(function* () {
+          const next = applyServerSettingsPatch(yield* Ref.get(settingsRef), patch);
+          yield* Ref.set(settingsRef, next);
+          yield* Ref.update(writes, (n) => n + 1);
+          return next;
+        }),
+      get streamChanges() {
+        return Stream.empty;
+      },
+      get subscribeChanges() {
+        return Effect.succeed(Stream.empty);
+      },
+    } satisfies ServerSettingsModule.ServerSettingsService["Service"];
+    return { service, settingsRef, writes };
+  });
+
+const withSettings = (providerInstances: Record<string, unknown>): ServerSettings =>
+  ({ ...DEFAULT_SERVER_SETTINGS, providerInstances }) as unknown as ServerSettings;
+
 describe("fork instance seed", () => {
-  it("seeds exactly the available ids with the tabled values", () => {
-    const seeded = seedForkProviderInstances({} as ProviderInstanceConfigMap, {
-      "claude-lhc": true,
-      "codex-lhc": false,
-      "grok-lhc": true,
-    });
-    assert.deepEqual(Object.keys(seeded).toSorted(), ["claude-lhc", "grok-lhc"]);
-    assert.deepEqual(seeded[ProviderInstanceId.make("claude-lhc")], {
+  it("lists the available ids that are absent, in seed order, with the tabled values", () => {
+    assert.deepEqual(missingForkInstanceSeeds({}, ALL_SEEDS), [
+      "claude-lhc",
+      "codex-lhc",
+      "grok-lhc",
+    ]);
+    assert.deepEqual(missingForkInstanceSeeds({}, NO_FORK_INSTANCE_SEEDS), []);
+    assert.deepEqual(
+      missingForkInstanceSeeds({}, { "claude-lhc": true, "codex-lhc": false, "grok-lhc": true }),
+      ["claude-lhc", "grok-lhc"],
+    );
+    assert.deepEqual(FORK_INSTANCE_SEEDS["claude-lhc"], {
       driver: ProviderDriverKind.make("claude-lhc"),
       displayName: "Claude LHC",
       accentColor: "#7c3aed",
       enabled: true,
       config: {},
     });
-    assert.deepEqual(seeded[ProviderInstanceId.make("grok-lhc")], {
+    assert.deepEqual(FORK_INSTANCE_SEEDS["codex-lhc"].config, {
+      binaryPath: "codex-lhc",
+      updateSource: "lhc",
+    });
+    assert.deepEqual(FORK_INSTANCE_SEEDS["grok-lhc"], {
       driver: ProviderDriverKind.make("grok"),
       displayName: "Grok LHC",
       accentColor: "#7c3aed",
       enabled: true,
       config: { binaryPath: "grok-lhc" },
     });
-    assert.deepEqual(FORK_INSTANCE_SEEDS["codex-lhc"].config, {
-      binaryPath: "codex-lhc",
-      updateSource: "lhc",
-    });
-    assert.deepEqual(
-      seedForkProviderInstances({} as ProviderInstanceConfigMap, NO_FORK_INSTANCE_SEEDS),
-      {},
-    );
     assert.equal(FORK_INSTANCE_SEED_IDS.length, 3);
   });
 
-  it("never stomps an explicit entry with the same id", () => {
-    const explicit = {
-      "codex-lhc": {
-        driver: ProviderDriverKind.make("codex"),
-        config: { binaryPath: "/opt/codex" },
-      },
-      "claude-lhc": { driver: ProviderDriverKind.make("claudeAgent"), enabled: false },
-    } as unknown as ProviderInstanceConfigMap;
-    const seeded = seedForkProviderInstances(explicit, ALL_SEEDS);
-    assert.deepEqual(
-      seeded[ProviderInstanceId.make("codex-lhc")],
-      explicit[ProviderInstanceId.make("codex-lhc")],
-    );
-    assert.deepEqual(
-      seeded[ProviderInstanceId.make("claude-lhc")],
-      explicit[ProviderInstanceId.make("claude-lhc")],
-    );
-    assert.equal(seeded[ProviderInstanceId.make("grok-lhc")]?.displayName, "Grok LHC");
+  it("treats any existing row as present, whatever it says (explicit wins, never rewritten)", () => {
+    const rows = {
+      "codex-lhc": { driver: "codex", config: { binaryPath: "/opt/codex" } },
+      "claude-lhc": { driver: "claudeAgent", enabled: false },
+    };
+    assert.deepEqual(missingForkInstanceSeeds(withSettings(rows).providerInstances, ALL_SEEDS), [
+      "grok-lhc",
+    ]);
   });
 
-  it("rides the legacy mirror in deriveProviderInstanceConfigMap and is off by default", () => {
+  it("no longer merges anything into deriveProviderInstanceConfigMap", () => {
     const stock = deriveProviderInstanceConfigMap(DEFAULT_SERVER_SETTINGS);
     assert.deepEqual(
       Object.keys(stock).filter((id) => id.endsWith("-lhc")),
       [],
     );
-    const seeded = deriveProviderInstanceConfigMap(DEFAULT_SERVER_SETTINGS, ALL_SEEDS);
-    assert.deepEqual(
-      Object.keys(seeded)
-        .filter((id) => id.endsWith("-lhc"))
-        .toSorted(),
-      ["claude-lhc", "codex-lhc", "grok-lhc"],
-    );
-    // the mirror rows are untouched
-    assert.deepEqual(
-      seeded[ProviderInstanceId.make("codex")],
-      stock[ProviderInstanceId.make("codex")],
-    );
-    assert.deepEqual(
-      seeded[ProviderInstanceId.make("claudeAgent")],
-      stock[ProviderInstanceId.make("claudeAgent")],
-    );
   });
+
+  it.effect("persists the missing rows once through the settings-update command", () =>
+    Effect.gen(function* () {
+      const explicitCodexLhc = {
+        driver: ProviderDriverKind.make("codex"),
+        config: { binaryPath: "/opt/codex" },
+      };
+      const { service, settingsRef, writes } = yield* makeCountingSettingsService(
+        withSettings({ "codex-lhc": explicitCodexLhc }),
+      );
+      const run = (availability: typeof ALL_SEEDS | typeof NO_FORK_INSTANCE_SEEDS) =>
+        Effect.gen(function* () {
+          const current = yield* Ref.get(settingsRef);
+          return yield* persistForkInstanceSeeds(current, availability);
+        }).pipe(Effect.provideService(ServerSettingsModule.ServerSettingsService, service));
+
+      // nothing available: no write
+      yield* run(NO_FORK_INSTANCE_SEEDS);
+      assert.equal(yield* Ref.get(writes), 0);
+
+      // claude-lhc and grok-lhc absent: one write with the full map plus both rows
+      const after = yield* run(ALL_SEEDS);
+      assert.equal(yield* Ref.get(writes), 1);
+      assert.deepEqual(
+        after.providerInstances[ProviderInstanceId.make("claude-lhc")],
+        FORK_INSTANCE_SEEDS["claude-lhc"],
+      );
+      assert.deepEqual(
+        after.providerInstances[ProviderInstanceId.make("grok-lhc")],
+        FORK_INSTANCE_SEEDS["grok-lhc"],
+      );
+      // the explicit row that differs from the seed is byte-identical
+      assert.deepEqual(
+        after.providerInstances[ProviderInstanceId.make("codex-lhc")],
+        explicitCodexLhc,
+      );
+      assert.deepEqual(yield* Ref.get(settingsRef), after);
+
+      // second pass with the same availability: nothing to write, same settings returned
+      const again = yield* run(ALL_SEEDS);
+      assert.equal(yield* Ref.get(writes), 1);
+      assert.deepEqual(again, after);
+    }),
+  );
 
   it.layer(NodeServices.layer)("availability probe", (it) => {
     it.effect("reports the sidecar file and the fork binaries on PATH, nothing else", () =>
