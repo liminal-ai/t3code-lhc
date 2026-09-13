@@ -9,7 +9,7 @@
  *
  * @module provider/Drivers/ClaudeLhcDriver
  */
-import { CLAUDE_LHC_DRIVER_KIND } from "@t3tools/contracts";
+import { CLAUDE_LHC_DRIVER_KIND, ClaudeLhcSettings } from "@t3tools/contracts";
 
 import { makeClaudeDriver } from "./ClaudeDriver.ts";
 import { makeClaudeLhcCreateQuery } from "./ClaudeLhcSidecar.ts";
@@ -26,4 +26,5 @@ export const ClaudeLhcDriver = makeClaudeDriver({
   displayName: "Claude LHC",
   createQuery: makeClaudeLhcCreateQuery,
   continuationGroupKey: claudeLhcContinuationGroupKey,
+  configSchema: ClaudeLhcSettings,
 });

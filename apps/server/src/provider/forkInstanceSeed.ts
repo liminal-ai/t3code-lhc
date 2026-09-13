@@ -58,7 +58,7 @@ export const FORK_INSTANCE_SEEDS: Readonly<Record<ForkInstanceSeedId, ProviderIn
     displayName: "Claude LHC",
     accentColor: LHC_ACCENT_COLOR,
     enabled: true,
-    config: {},
+    config: { autoCompactWindow: "380000", lhcLowerBound: "150000" },
   },
   "codex-lhc": {
     driver: ProviderDriverKind.make("codex"),

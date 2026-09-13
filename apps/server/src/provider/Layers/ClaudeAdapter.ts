@@ -1928,7 +1928,7 @@ function sdkNativeItemId(message: SDKMessage): string | undefined {
 }
 
 export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
-  claudeSettings: ClaudeSettings,
+  claudeSettings: ClaudeSettings & { readonly lhcLowerBound?: string },
   options?: ClaudeAdapterLiveOptions,
 ) {
   const boundInstanceId = options?.instanceId ?? ProviderInstanceId.make("claudeAgent");
@@ -4682,6 +4682,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         ...(ultracode ? { ultracode: true } : {}),
         ...(claudeSettings.autoCompactWindow
           ? { autoCompactWindow: Number(claudeSettings.autoCompactWindow) }
+          : {}),
+        ...(claudeSettings.lhcLowerBound
+          ? { lhcLowerBound: Number(claudeSettings.lhcLowerBound) }
           : {}),
       };
       const mcpSession = McpProviderSession.readMcpProviderSession(input.threadId);

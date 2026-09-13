@@ -530,10 +530,15 @@ export const CodexSettings = makeProviderSettingsSchema(
 );
 export type CodexSettings = typeof CodexSettings.Type;
 
-// Empty, or an integer from 100,000 to 1,000,000. Shared by the full
-// Claude settings schema and its patch so an out-of-range value fails at
-// the update that introduced it.
+// Empty, or an integer from 100,000 to 1,000,000. Shared by the Claude
+// and Claude LHC settings schemas (and their patches) so an out-of-range
+// value fails at the update that introduced it.
 const CLAUDE_AUTO_COMPACT_WINDOW_PATTERN = /^(?:|[1-9]\d{5}|1000000)$/;
+
+const claudeTokenWindowSetting = (defaultValue: string) =>
+  TrimmedString.check(Schema.isPattern(CLAUDE_AUTO_COMPACT_WINDOW_PATTERN)).pipe(
+    Schema.withDecodingDefault(Effect.succeed(defaultValue)),
+  );
 
 export const ClaudeSettings = makeProviderSettingsSchema(
   {
@@ -592,6 +597,38 @@ export const ClaudeSettings = makeProviderSettingsSchema(
   },
 );
 export type ClaudeSettings = typeof ClaudeSettings.Type;
+
+export const ClaudeLhcSettings = makeProviderSettingsSchema(
+  {
+    ...ClaudeSettings.fields,
+    autoCompactWindow: claudeTokenWindowSetting("380000").pipe(
+      Schema.annotateKey({
+        title: "Compact trigger",
+        description:
+          "Provider-billed context at which LHC rebuilds the view. Narrow, precise coding: ~240k with a ~80k target. Ordinary intricate work: 350-380k (default). Broad long-horizon work: up to ~450k. Big-picture planning: 500-600k, accepting duller detail. Clarity rolls off from ~350-400k.",
+        providerSettingsForm: {
+          placeholder: "e.g. 380000",
+          clearWhenEmpty: "omit",
+        },
+      }),
+    ),
+    lhcLowerBound: claudeTokenWindowSetting("150000").pipe(
+      Schema.annotateKey({
+        title: "Rebuilt view size",
+        description:
+          "Size the rebuilt context is built to after a compact, in provider-billed tokens. Must be below the trigger. ~80k for focused coding, 150-180k for ordinary work.",
+        providerSettingsForm: {
+          placeholder: "e.g. 150000",
+          clearWhenEmpty: "omit",
+        },
+      }),
+    ),
+  },
+  {
+    order: ["binaryPath", "homePath", "autoCompactWindow", "lhcLowerBound", "launchArgs"],
+  },
+);
+export type ClaudeLhcSettings = typeof ClaudeLhcSettings.Type;
 
 export const CursorSettings = makeProviderSettingsSchema(
   {
@@ -1150,6 +1187,21 @@ const ClaudeSettingsPatch = Schema.Struct({
     TrimmedString.check(Schema.isPattern(CLAUDE_AUTO_COMPACT_WINDOW_PATTERN)),
   ),
 });
+
+export const ClaudeLhcSettingsPatch = Schema.Struct({
+  enabled: Schema.optionalKey(Schema.Boolean),
+  binaryPath: Schema.optionalKey(TrimmedString),
+  homePath: Schema.optionalKey(TrimmedString),
+  customModels: Schema.optionalKey(Schema.Array(CustomModelSetting)),
+  launchArgs: Schema.optionalKey(TrimmedString),
+  autoCompactWindow: Schema.optionalKey(
+    TrimmedString.check(Schema.isPattern(CLAUDE_AUTO_COMPACT_WINDOW_PATTERN)),
+  ),
+  lhcLowerBound: Schema.optionalKey(
+    TrimmedString.check(Schema.isPattern(CLAUDE_AUTO_COMPACT_WINDOW_PATTERN)),
+  ),
+});
+export type ClaudeLhcSettingsPatch = typeof ClaudeLhcSettingsPatch.Type;
 
 const CursorSettingsPatch = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),

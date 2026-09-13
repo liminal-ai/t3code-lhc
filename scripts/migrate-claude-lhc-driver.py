@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Move the existing "Claude LHC" instance and its threads to the `claude-lhc` driver kind.
 
+Also writes default token-window keys (`autoCompactWindow`, `lhcLowerBound`) onto
+that instance when either is missing. Does not overwrite a key that is already set.
+
 Usage: migrate-claude-lhc-driver.py <userdata dir> [--apply]
 Without --apply: prints the plan and the row counts, changes nothing.
 Run against a COPY first (`--copy-from ~/.t3code/userdata <dest>` makes one with a consistent sqlite backup).
@@ -12,6 +15,7 @@ from pathlib import Path
 INSTANCE = "claude-lhc"
 OLD_KIND, NEW_KIND = "claudeAgent", "claude-lhc"
 TABLES = ("projection_thread_sessions", "provider_session_runtime")
+TOKEN_WINDOW_DEFAULTS = {"autoCompactWindow": "380000", "lhcLowerBound": "150000"}
 
 def copy_userdata(src: Path, dst: Path) -> None:
     dst.mkdir(parents=True, exist_ok=False)
@@ -32,6 +36,10 @@ def main() -> int:
     plan = []
     if inst.get("driver") == OLD_KIND: plan.append(f"providerInstances.{INSTANCE}.driver: {OLD_KIND} -> {NEW_KIND}")
     elif inst.get("driver") != NEW_KIND: print(f"refusing: driver is {inst.get('driver')!r}"); return 2
+    config = inst.get("config") if isinstance(inst.get("config"), dict) else {}
+    for key, default in TOKEN_WINDOW_DEFAULTS.items():
+        if key not in config:
+            plan.append(f"providerInstances.{INSTANCE}.config.{key}: set {default!r} (missing)")
     for key, entry in settings["providerInstances"].items():
         if isinstance(entry.get("config"), dict) and "lhc" in entry["config"]:
             plan.append(f"providerInstances.{key}.config.lhc ({entry['config']['lhc']!r}): removed (field no longer exists)")
@@ -46,6 +54,9 @@ def main() -> int:
     if not apply or not plan: return 0
     backup = settings_path.with_name(f"settings.json.bak-claude-lhc-driver"); shutil.copy2(settings_path, backup)
     inst["driver"] = NEW_KIND
+    if not isinstance(inst.get("config"), dict): inst["config"] = {}
+    for key, default in TOKEN_WINDOW_DEFAULTS.items():
+        inst["config"].setdefault(key, default)
     for entry in settings["providerInstances"].values():
         if isinstance(entry.get("config"), dict): entry["config"].pop("lhc", None)
     legacy.pop("lhc", None)

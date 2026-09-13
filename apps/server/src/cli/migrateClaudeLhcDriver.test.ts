@@ -92,7 +92,7 @@ describe.skipIf(!hasPython)("migrate-claude-lhc-driver.py", () => {
       driver: "claude-lhc",
       displayName: "Claude LHC",
       enabled: true,
-      config: { autoCompactWindow: "350000" },
+      config: { autoCompactWindow: "350000", lhcLowerBound: "150000" },
     });
     expect(settings.providerInstances.claudeAgent.config).toEqual({ homePath: "" });
     expect(settings.providerInstances.codex).toEqual({ driver: "codex", enabled: true });
@@ -135,5 +135,43 @@ describe.skipIf(!hasPython)("migrate-claude-lhc-driver.py", () => {
     settings.providerInstances["claude-lhc"].driver = "codex";
     NodeFS.writeFileSync(path, JSON.stringify(settings));
     expect(run(dir, "--apply").status).toBe(2);
+  });
+
+  it("fills missing token-window keys on an already-migrated instance and is idempotent", () => {
+    const dir = makeUserdata();
+    const path = NodePath.join(dir, "settings.json");
+    const settings = JSON.parse(NodeFS.readFileSync(path, "utf8"));
+    settings.providerInstances["claude-lhc"] = {
+      driver: "claude-lhc",
+      displayName: "Claude LHC",
+      enabled: true,
+      config: { autoCompactWindow: "240000" },
+    };
+    NodeFS.writeFileSync(path, JSON.stringify(settings));
+    const before = NodeFS.readFileSync(path, "utf8");
+
+    const dry = run(dir);
+    expect(dry.status).toBe(0);
+    expect(dry.stdout).toContain("config.lhcLowerBound: set '150000' (missing)");
+    expect(dry.stdout).not.toContain("config.autoCompactWindow:");
+    expect(NodeFS.readFileSync(path, "utf8")).toBe(before);
+
+    const applied = run(dir, "--apply");
+    expect(applied.status).toBe(0);
+    const next = JSON.parse(NodeFS.readFileSync(path, "utf8"));
+    expect(next.providerInstances["claude-lhc"].config).toEqual({
+      autoCompactWindow: "240000",
+      lhcLowerBound: "150000",
+    });
+
+    const again = run(dir, "--apply");
+    expect(again.status).toBe(0);
+    expect(again.stdout).toContain("already migrated; nothing to do");
+    expect(
+      JSON.parse(NodeFS.readFileSync(path, "utf8")).providerInstances["claude-lhc"].config,
+    ).toEqual({
+      autoCompactWindow: "240000",
+      lhcLowerBound: "150000",
+    });
   });
 });

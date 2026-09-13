@@ -81,6 +81,26 @@ describe("ProviderSettingsForm helpers", () => {
     ]);
   });
 
+  it("shows compact trigger and rebuilt view size for Claude LHC", () => {
+    const lhc = DRIVER_OPTION_BY_VALUE[ProviderDriverKind.make("claude-lhc")];
+    expect(lhc).toBeDefined();
+
+    const fields = deriveProviderSettingsFields(lhc!);
+    expect(fields.map((field) => field.key)).toEqual([
+      "binaryPath",
+      "homePath",
+      "autoCompactWindow",
+      "lhcLowerBound",
+      "launchArgs",
+    ]);
+    expect(fields.find((field) => field.key === "autoCompactWindow")).toMatchObject({
+      label: "Compact trigger",
+    });
+    expect(fields.find((field) => field.key === "lhcLowerBound")).toMatchObject({
+      label: "Rebuilt view size",
+    });
+  });
+
   it("preserves unknown config keys while omitting empty configurable fields", () => {
     const opencode = DRIVER_OPTION_BY_VALUE[ProviderDriverKind.make("opencode")];
     expect(opencode).toBeDefined();

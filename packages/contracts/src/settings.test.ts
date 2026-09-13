@@ -5,6 +5,8 @@ import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
 import {
   ClientSettingsSchema,
   ClientSettingsPatch,
+  ClaudeLhcSettings,
+  ClaudeLhcSettingsPatch,
   ClaudeSettings,
   DEFAULT_SERVER_SETTINGS,
   resolveProviderInstanceEnabled,
@@ -19,6 +21,8 @@ const decodeServerSettings = Schema.decodeUnknownSync(ServerSettings);
 const decodeServerSettingsPatch = Schema.decodeUnknownSync(ServerSettingsPatch);
 const encodeServerSettings = Schema.encodeSync(ServerSettings);
 const decodeClaudeSettings = Schema.decodeUnknownSync(ClaudeSettings);
+const decodeClaudeLhcSettings = Schema.decodeUnknownSync(ClaudeLhcSettings);
+const decodeClaudeLhcSettingsPatch = Schema.decodeUnknownSync(ClaudeLhcSettingsPatch);
 
 describe("ServerSettings usage price overrides", () => {
   const prices = { inputCostPerMillionTokens: 2, outputCostPerMillionTokens: 8 };
@@ -141,6 +145,27 @@ describe("ClaudeSettings long-horizon context", () => {
     expect("lhc" in decodeClaudeSettings({ lhc: true })).toBe(false);
     const patch = decodeServerSettingsPatch({ providers: { claudeAgent: { lhc: true } } });
     expect("lhc" in (patch.providers?.claudeAgent ?? {})).toBe(false);
+  });
+});
+
+describe("ClaudeLhcSettings", () => {
+  it("defaults both token windows when they are omitted", () => {
+    const decoded = decodeClaudeLhcSettings({});
+    expect(decoded.autoCompactWindow).toBe("380000");
+    expect(decoded.lhcLowerBound).toBe("150000");
+  });
+
+  it("accepts lhcLowerBound on the matching patch", () => {
+    expect(decodeClaudeLhcSettingsPatch({ lhcLowerBound: "150000" }).lhcLowerBound).toBe("150000");
+    expect(decodeClaudeLhcSettingsPatch({ autoCompactWindow: "380000" }).autoCompactWindow).toBe(
+      "380000",
+    );
+    expect(() => decodeClaudeLhcSettingsPatch({ lhcLowerBound: "300k" })).toThrow();
+  });
+
+  it("is not present on the stock Claude schema", () => {
+    expect("lhcLowerBound" in decodeClaudeSettings({})).toBe(false);
+    expect("lhcLowerBound" in decodeClaudeSettings({ lhcLowerBound: "150000" })).toBe(false);
   });
 });
 

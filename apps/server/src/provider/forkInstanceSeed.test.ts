@@ -75,7 +75,7 @@ describe("fork instance seed", () => {
       displayName: "Claude LHC",
       accentColor: "#7c3aed",
       enabled: true,
-      config: {},
+      config: { autoCompactWindow: "380000", lhcLowerBound: "150000" },
     });
     assert.deepEqual(FORK_INSTANCE_SEEDS["codex-lhc"].config, {
       binaryPath: "codex-lhc",

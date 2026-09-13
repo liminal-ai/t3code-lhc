@@ -13,6 +13,8 @@ import type {
 } from "@anthropic-ai/claude-agent-sdk";
 import {
   ApprovalRequestId,
+  CLAUDE_LHC_DRIVER_KIND,
+  ClaudeLhcSettings,
   ClaudeSettings,
   ProviderDriverKind,
   ProviderItemId,
@@ -52,6 +54,7 @@ import type { ClaudeAdapterShape } from "../Services/ClaudeAdapter.ts";
 import type { ClaudeScopedLimitNames } from "./claudeUsageLimits.ts";
 import { makeClaudeAdapter, type ClaudeAdapterLiveOptions } from "./ClaudeAdapter.ts";
 const decodeClaudeSettings = Schema.decodeSync(ClaudeSettings);
+const decodeClaudeLhcSettings = Schema.decodeSync(ClaudeLhcSettings);
 const encodeUnknownJsonString = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
 // Test-local service tag so the rest of the file can keep using `yield* ClaudeAdapter`.
@@ -167,7 +170,7 @@ function makeHarness(config?: {
   readonly nativeEventLogger?: ClaudeAdapterLiveOptions["nativeEventLogger"];
   readonly cwd?: string;
   readonly baseDir?: string;
-  readonly claudeConfig?: Partial<ClaudeSettings>;
+  readonly claudeConfig?: Partial<ClaudeSettings> & { readonly lhcLowerBound?: string };
   readonly instanceId?: ProviderInstanceId;
   readonly driverKind?: ProviderDriverKind;
   readonly scopedLimitNames?: ClaudeAdapterLiveOptions["scopedLimitNames"];
@@ -208,7 +211,10 @@ function makeHarness(config?: {
     layer: Layer.effect(
       ClaudeAdapter,
       Effect.gen(function* () {
-        const claudeConfig = decodeClaudeSettings(config?.claudeConfig ?? {});
+        const claudeConfig =
+          config?.driverKind === CLAUDE_LHC_DRIVER_KIND
+            ? decodeClaudeLhcSettings(config?.claudeConfig ?? {})
+            : decodeClaudeSettings(config?.claudeConfig ?? {});
         return yield* makeClaudeAdapter(claudeConfig, adapterOptions);
       }),
     ).pipe(
@@ -484,6 +490,74 @@ describe("ClaudeAdapterLive", () => {
       Effect.provide(harness.layer),
     );
   });
+
+  it.effect("forwards schema defaults when a claude-lhc instance has empty config", () => {
+    const harness = makeHarness({ driverKind: CLAUDE_LHC_DRIVER_KIND });
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: CLAUDE_LHC_DRIVER_KIND,
+        runtimeMode: "full-access",
+      });
+
+      const options = harness.getLastCreateQueryInput()?.options;
+      assert.deepEqual(options?.settings, {
+        autoCompactWindow: 380000,
+        lhcLowerBound: 150000,
+      });
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  it.effect("forwards both token windows for a claude-lhc instance", () => {
+    const harness = makeHarness({
+      driverKind: CLAUDE_LHC_DRIVER_KIND,
+      claudeConfig: { autoCompactWindow: "380000", lhcLowerBound: "150000" },
+    });
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: CLAUDE_LHC_DRIVER_KIND,
+        runtimeMode: "full-access",
+      });
+
+      const options = harness.getLastCreateQueryInput()?.options;
+      assert.deepEqual(options?.settings, {
+        autoCompactWindow: 380000,
+        lhcLowerBound: 150000,
+      });
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  it.effect(
+    "does not forward lhcLowerBound for stock Claude even when present in raw config",
+    () => {
+      const harness = makeHarness({
+        claudeConfig: { autoCompactWindow: "300000", lhcLowerBound: "150000" },
+      });
+      return Effect.gen(function* () {
+        const adapter = yield* ClaudeAdapter;
+        yield* adapter.startSession({
+          threadId: THREAD_ID,
+          provider: ProviderDriverKind.make("claudeAgent"),
+          runtimeMode: "full-access",
+        });
+
+        const options = harness.getLastCreateQueryInput()?.options;
+        assert.deepEqual(options?.settings, { autoCompactWindow: 300000 });
+      }).pipe(
+        Effect.provideService(Random.Random, makeDeterministicRandomService()),
+        Effect.provide(harness.layer),
+      );
+    },
+  );
 
   it.effect("forwards claude effort levels into query options", () => {
     const harness = makeHarness();
