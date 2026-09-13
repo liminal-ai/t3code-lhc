@@ -54,8 +54,9 @@ and trust.
 
 ## Sync drill (detail lands with the first controlled sync)
 
-1. `git fetch upstream --tags`; pick the newest upstream release published at
-   least 24h ago; skip if `BASE_TAG` already is it.
+1. `git fetch upstream --tags`; pick the newest upstream **stable** release
+   (`vX.Y.Z`, no nightly or preview) published at least 24h ago; skip if
+   `BASE_TAG` already is it. Nightlies are not synced (Lee, 2026-09-13).
 2. In a worktree off `main`: `git merge <tag>^{commit}`; resolve conflicts only
    on inventoried paths; `git rm` every `.github/workflows/*` not prefixed
    `lhc-` (upstream re-adds them; keep them deleted).
