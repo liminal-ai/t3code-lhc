@@ -215,26 +215,33 @@ The seed leaves both at their defaults. On a locked-down box set
 ## LHC sidebar (fork-only)
 
 A third left-nav view for tracking named long-running threads:
-`apps/web/src/components/LhcSidebar.tsx`, a copy of upstream `Sidebar.tsx`
+`apps/web/src/components/LhcSidebar.tsx`, a copy of upstream `LegacySidebar.tsx`
 (source commit in the file header) with `LhcSidebar.logic.ts` for the parts
 that differ. Upstream `Sidebar.tsx` and `LegacySidebar.tsx` stay untouched;
-upstream changes to `Sidebar.tsx` are ported into the copy by hand and logged
-in `SYNCS.md`.
+upstream changes to `LegacySidebar.tsx` are ported into the copy by hand and
+logged in `SYNCS.md`.
 
-Differences from the Threads view: rows show the project name (no icon), the
-status slot and the title only (the branch/provider line is gone; the hover
-tooltip keeps branch, PR, diff, terminal and provider); rows are shorter with
-smaller text; the active and pinned shelves both order by last turn activity
-(newest of the latest turn's requested / started / completed stamps, threads
-with no turn by `createdAt`; never `updatedAt`, so pins, renames and title
-regeneration do not reorder); in-shelf drag reorder is a no-op while pin,
-unpin, settle, unsettle and snooze keep working. Arranged order keys are
-ignored, not cleared, so the Threads view keeps its order.
+Structure: an **Agents** section (every pinned, non-archived thread; pin means
+"long-term agent" here) ordered by last turn activity (newest of the latest
+turn's requested / started / completed stamps, threads with no turn by
+`createdAt`; never `updatedAt`). Right-click (long-press on touch) on the
+Agents header opens a menu with "Group by project": one collapsible
+sub-heading per project, projects ordered by their newest agent. Collapse
+under Agents is its own state (`lhc-agents:`-prefixed keys), independent of the
+Projects tree. Below it a **Projects** section: the legacy projects-with-threads
+tree minus pinned threads (a project whose threads are all pinned keeps its
+header, which is the new-thread affordance). Both section headers collapse
+their section; the Projects header keeps the sort and add-project buttons.
+Rows are one line (title, status / time) with visible hover, selected and open
+surfaces. Theo's active / snoozed / settled shelves do not exist in this view.
 
 Selection is the client setting `sidebarLayout: "threads" | "projects" |
-"lhc"` (**Settings → General → Sidebar**). Unset defers to upstream's
-`legacySidebarEnabled` (`true` → Projects). The select writes both keys so
-upstream readers of the legacy switch agree with the chosen view.
+"lhc"` (**Settings → General → Legacy features → Sidebar**). Unset defers to
+upstream's `legacySidebarEnabled` (`true` → Projects). The select writes both
+keys so upstream readers of the legacy switch agree with the chosen view.
+Section state lives in client settings `lhcAgentsExpanded`,
+`lhcAgentsGroupByProject`, `lhcProjectsExpanded`. Preview builds may set
+`VITE_T3CODE_SIDEBAR_LAYOUT=lhc` as the unset default; releases leave it unset.
 
 ## Default instance seed (fork-only)
 
