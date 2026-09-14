@@ -53,6 +53,7 @@ import {
 import { ProjectFavicon } from "./ProjectFavicon";
 import { isMacPlatform } from "../lib/utils";
 import {
+  hasUnseenCompletion,
   archiveSelectedThreadEntries,
   buildMultiSelectThreadContextMenuItems,
   deleteSelectedThreadEntries,
@@ -533,10 +534,14 @@ const LhcAgentRow = memo(function LhcAgentRow(props: {
   const stopPointer = useCallback((event: React.PointerEvent) => event.stopPropagation(), []);
   const rowRender = useMemo(() => <div role="button" tabIndex={0} />, []);
   const ageStamp = lastTurnActivityStamp(thread);
-  const statusLabel =
-    thread.session?.status === "running" && thread.session.activeTurnId != null
-      ? "Running"
-      : formatRelativeTimeLabel(ageStamp);
+  const isRunning = thread.session?.status === "running" && thread.session.activeTurnId != null;
+  const statusLabel = isRunning ? "Running" : formatRelativeTimeLabel(ageStamp);
+  // F4: "finished since you last looked", Theo's rule (never-visited counts as read); a running
+  // row never lights up. Cleared by upstream's markThreadVisited when the thread is opened.
+  const lastVisitedAt = useUiStateStore(
+    (state) => state.threadLastVisitedAtById[threadKey] ?? undefined,
+  );
+  const isUnread = !isRunning && hasUnseenCompletion({ ...thread, lastVisitedAt });
   const hoverActionWrapClass =
     "pointer-events-none absolute top-1/2 -translate-y-1/2 opacity-0 transition-opacity duration-150 max-sm:pointer-events-auto max-sm:opacity-100 group-hover/menu-sub-item:pointer-events-auto group-hover/menu-sub-item:opacity-100 group-focus-within/menu-sub-item:pointer-events-auto group-focus-within/menu-sub-item:opacity-100";
 
@@ -589,8 +594,9 @@ const LhcAgentRow = memo(function LhcAgentRow(props: {
               <TooltipTrigger
                 render={
                   <span
-                    className="min-w-0 flex-1 truncate text-sm"
+                    className={`min-w-0 flex-1 truncate text-sm ${isUnread ? "font-medium text-foreground" : ""}`}
                     data-testid={`thread-title-${thread.id}`}
+                    data-unread={isUnread ? "true" : undefined}
                   >
                     {thread.title}
                   </span>
@@ -601,7 +607,10 @@ const LhcAgentRow = memo(function LhcAgentRow(props: {
               </TooltipPopup>
             </Tooltip>
           )}
-          <span className="shrink-0 text-secondary-label text-[11px] tabular-nums group-hover/menu-sub-item:opacity-0 group-focus-within/menu-sub-item:opacity-0">
+          {isUnread ? (
+            <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-primary" />
+          ) : null}
+          <span className="shrink-0 text-secondary-label text-[11px] tabular-nums max-sm:pr-11 group-hover/menu-sub-item:opacity-0 group-focus-within/menu-sub-item:opacity-0">
             {statusLabel}
           </span>
         </div>

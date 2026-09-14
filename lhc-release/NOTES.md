@@ -1,3 +1,7 @@
+# unreleased
+
+- **LHC sidebar fixes (F1, F3, F4).** Agent rows reserve room for the always-visible Unpin / Archive icons on touch widths, so they sit beside the time instead of over it. The phone drawer is the full window in portrait (under 600px) and upstream's sheet width above that; before, an invalid inline width let the drawer size to its content. Agent rows show a bold title and an accent dot when the latest turn completed after you last opened the thread (never while Running); opening the thread clears it. Not changed: the one-refresh lag after rename / pin / delete is the server round trip in every view; the remove-project warning toast is fully in view once its slide-in finishes, and it carries Dismiss and "Delete anyway".
+
 # 0.0.40-lhc.7
 
 Upstream remains v0.0.40. Sidecar pin LHC `8f5c3276`.

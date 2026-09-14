@@ -123,5 +123,6 @@ apps/web/src/hooks/useSettings.ts
 apps/web/src/routes/_chat.tsx
 apps/desktop/src/settings/DesktopClientSettings.test.ts
 apps/web/src/components/LegacySidebar.tsx
+apps/web/src/components/ui/sidebar.tsx
 apps/web/src/components/LhcAgentsSection.tsx
 apps/web/src/components/LhcSidebar.removal.test.ts

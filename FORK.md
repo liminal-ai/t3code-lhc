@@ -241,6 +241,15 @@ refactor that drops one `// Fork seam` line silently restores legacy behavior
 there. After a sync touching `LegacySidebar.tsx`, grep the six marked sites and
 run the removal regression plus the headless view check before recording.
 
+Watched file: `apps/web/src/components/ui/sidebar.tsx` carries one fork hunk
+(marked `Fork`, sidebar fixes F3): the mobile sheet width. Upstream set it
+inline as `calc(100vw - var(--spacing(3)))`, which is not valid CSS outside
+Tailwind-compiled files, so the declaration was dropped and the sheet sized to
+its content (full window with the tree expanded, narrower with it collapsed).
+The fork sets `100vw` below 600px and upstream's sheet width (`calc(100% -
+3rem)`, `max-w-md`) from 600px up. After a sync touching that file, re-check the
+two lines and the 390 / 700 / 844 drawer widths.
+
 Structure: an **Agents** section (every pinned, non-archived thread; pin means
 "long-term agent" here) ordered by last turn activity (newest of the latest
 turn's requested / started / completed stamps, threads with no turn by

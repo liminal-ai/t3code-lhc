@@ -25,7 +25,10 @@ import * as Schema from "effect/Schema";
 const SIDEBAR_COOKIE_NAME = "sidebar_state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 const SIDEBAR_WIDTH = "16rem";
-const SIDEBAR_WIDTH_MOBILE = "calc(100vw - var(--spacing(3)))";
+// Fork (lhc sidebar fixes F3): upstream wrote `var(--spacing(3))`, invalid outside Tailwind-compiled CSS, so the
+// inline value was dropped and the sheet fell back to the 16rem desktop width. Phone portrait gets the full window;
+// wider viewports keep upstream's sheet width via the class below.
+const SIDEBAR_WIDTH_MOBILE = "100vw";
 const SIDEBAR_WIDTH_ICON = "3rem";
 const SIDEBAR_RESIZE_DEFAULT_MIN_WIDTH = 16 * 16;
 
@@ -236,7 +239,7 @@ function Sidebar({
         <Sheet onOpenChange={setOpenMobile} open={openMobile} {...props}>
           <SheetPopup
             className={cn(
-              "w-(--sidebar-width) max-w-none bg-sidebar surface-grain p-0 text-sidebar-foreground",
+              "w-(--sidebar-width) max-w-none min-[600px]:w-[calc(100%-(--spacing(12)))] min-[600px]:max-w-md bg-sidebar surface-grain p-0 text-sidebar-foreground", // Fork: F3 width rule
               className,
             )}
             data-mobile="true"
