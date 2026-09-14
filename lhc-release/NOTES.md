@@ -1,9 +1,11 @@
-# unreleased
+# 0.0.40-lhc.7
 
-Upstream remains v0.0.40. Sidecar pin LHC `5f181303`.
+Upstream remains v0.0.40. Sidecar pin LHC `8f5c3276`.
 
 - **LHC sidebar.** A third left-nav view (**Settings → General → Sidebar**; LHC is the fork default): an Agents section (pinned threads, ordered by last turn, right-click the header to group by project) above the projects tree without pinned threads; both sections collapse from their headers; one-line rows with visible hover and selection. Rows under Projects offer "Pin as agent"; agent rows offer Unpin, plus the usual single-row actions against the thread's own project. Removing a project still counts its pinned agents. Built as the fork-owned Agents section over the upstream legacy tree through a small declared seam in `LegacySidebar.tsx` (FORK.md "LHC sidebar"). Deferred: thread-jump hint badges on agent rows.
 - **Sidebar setting.** The legacy sidebar switch becomes a Threads / Projects / LHC select on Settings → General. Unset resolves to LHC; a legacy-on browser still gets Projects; an explicit pick always wins.
+- **Claude LHC compact settings.** The `claude-lhc` instance form gains **Auto-compact after** (`autoCompactWindow`, default 380000) and **Rebuilt view size** (`lhcLowerBound`, default 150000), both in provider-billed tokens and both required; the lower bound must be below the trigger. The sidecar builds the post-compact view to the configured bound instead of a ratio of the trigger, so a compact can no longer re-trigger on the next turn. `scripts/migrate-claude-lhc-driver.py` fills both fields on existing instances; run it at activation.
+- **Provider-aware token estimator (sidecar).** LHC `8f5c3276`: token estimates are weighted per tokenizer family (Claude 2026 models 1.55× the o200k count), resolved from the model t3code sends at session start and shown in compact notes. Existing records are unchanged; only the estimate changes.
 
 # 0.0.40-lhc.6
 
