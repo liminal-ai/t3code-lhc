@@ -20,6 +20,7 @@ export const formatLhcVersion = (): string =>
 
 export const lhcVersionFlag = Flag.boolean("lhc-version").pipe(
   Flag.withDescription("Print the LHC fork identity (version and upstream tag) and exit."),
+  Flag.withDefault(false),
 );
 
 export const printLhcVersion = Console.log(formatLhcVersion());

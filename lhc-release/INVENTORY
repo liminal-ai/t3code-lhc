@@ -5,6 +5,8 @@
 # Fork-owned: release process and contract
 # Tests: fork-owned
 # Tests: upstream test files touched
+apps/server/src/provider/testUtils/providerRegistryMock.ts
+apps/web/src/components/settings/settingsSearch.test.ts
 # Upstream files touched (additive, minimal)
 # except .github/workflows/ (rule: upstream workflows are deleted, only lhc-*
 # longer differs fails. Keep each group sorted (LC_ALL=C).

@@ -242,7 +242,7 @@ describe.each([
 
     expect(testState.draftStore.setLogicalProjectDraftThreadId).toHaveBeenCalledTimes(1);
     const options = testState.draftStore.setLogicalProjectDraftThreadId.mock.calls[0]?.[3];
-    expect(options).toMatchObject({ runtimeMode: "approval-required" });
+    expect(options).toMatchObject({ runtimeMode: testState.targetSettings.defaultRuntimeMode });
   });
   it.each([true, false])(
     "uses the target environment's start-from-origin default of %s",

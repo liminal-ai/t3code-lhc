@@ -515,15 +515,10 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["xcode android studio sdk avd runtime"],
   },
   {
-    id: "default-runtime-mode",
-    title: "Default access mode",
-    to: "/settings/projects",
-    searchTerms: ["new thread supervised auto accept edits full access permission mode default"],
-  },
-  {
     id: "offer-full-access",
     title: "Offer Full access",
-    to: "/settings/projects",
+    to: "/settings/general",
+    scope: "environment-defaults",
     searchTerms: ["hide full access composer mode locked down"],
   },
   {
