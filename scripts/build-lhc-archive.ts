@@ -39,6 +39,7 @@ import {
   WSL_RUNTIME_ARCHIVE_EXCLUDED_PREFIXES,
 } from "./build-desktop-artifact.ts";
 import {
+  ARCHIVE_SCRIPTS,
   type ArchiveArch,
   type ArchivePlatform,
   archiveExcludedPrefixes,
@@ -120,15 +121,20 @@ function resolveNpmCli(): string {
   );
 }
 
-function runNpm(args: ReadonlyArray<string>, cwd: string): string {
+/** Resolve and verify the archive npm up front, before the server build (lhc.8). */
+function assertArchiveNpm(): string {
   const cli = resolveNpmCli();
-  const version = runNodeCli(cli, ["--version"], cwd).trim();
+  const version = runNodeCli(cli, ["--version"], repoRoot).trim();
   if (!isQualifiedArchiveNpm(version)) {
     throw new Error(
-      `archive npm is ${version}; need ${LHC_ARCHIVE_NPM_VERSION} (11.4.2 is not qualified)`,
+      `archive npm is ${version}; need ${LHC_ARCHIVE_NPM_VERSION} (11.4.2 is not qualified). Set LHC_ARCHIVE_NPM to an npm ${LHC_ARCHIVE_NPM_VERSION} npm-cli.js.`,
     );
   }
-  return runNodeCli(cli, args, cwd);
+  return cli;
+}
+
+function runNpm(args: ReadonlyArray<string>, cwd: string): string {
+  return runNodeCli(assertArchiveNpm(), args, cwd);
 }
 
 function runNodeCli(cli: string, args: ReadonlyArray<string>, cwd: string): string {
@@ -409,6 +415,7 @@ function main() {
     throw new Error(`unsupported archive target ${platform}-${arch}`);
   }
   const identity = { version: lhcVersion.version, upstreamTag: lhcVersion.upstreamTag };
+  console.log(`[lhc-archive] archive npm ${LHC_ARCHIVE_NPM_VERSION} at ${assertArchiveNpm()}`);
 
   if (!options.skipBuild) {
     console.log("[lhc-archive] building server (with web client)...");
@@ -450,6 +457,12 @@ function main() {
       recursive: true,
       filter: (source) => !source.endsWith(".map"),
     });
+    NodeFS.mkdirSync(NodePath.join(stage, "scripts"), { recursive: true });
+    for (const script of ARCHIVE_SCRIPTS) {
+      const target = NodePath.join(stage, "scripts", script);
+      NodeFS.copyFileSync(NodePath.join(repoRoot, "scripts", script), target);
+      NodeFS.chmodSync(target, 0o755);
+    }
     NodeFS.writeFileSync(
       NodePath.join(stage, "package.json"),
       `${JSON.stringify({ name: "t3code-lhc-server", version: identity.version, private: true, packageManager: rootPackageJson.packageManager, dependencies }, null, 2)}\n`,
@@ -552,6 +565,15 @@ function main() {
       }
       if (!NodeFS.existsSync(NodePath.join(probe, "apps/server/dist/client/index.html"))) {
         throw new Error("post-pack check failed: web client missing from the archive");
+      }
+      for (const script of ARCHIVE_SCRIPTS) {
+        const packed = NodePath.join(probe, "scripts", script);
+        if (!NodeFS.existsSync(packed)) {
+          throw new Error(`post-pack check failed: scripts/${script} missing from the archive`);
+        }
+        if (hostPlatform !== "win32" && (NodeFS.statSync(packed).mode & 0o111) === 0) {
+          throw new Error(`post-pack check failed: scripts/${script} is not executable`);
+        }
       }
       if (platform === "win32") {
         const ffi = NodePath.join(probe, "node_modules", "@yuuang", "ffi-rs-win32-x64-msvc");

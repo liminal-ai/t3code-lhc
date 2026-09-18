@@ -82,6 +82,7 @@ apps/web/src/onboarding/providerReadiness.logic.ts
 docs/user/install.md
 docs/user/providers-claude.md
 docs/user/providers-codex.md
+lhc-release/ACTIVATION.md
 lhc-release/BASE
 lhc-release/BASE_TAG
 lhc-release/INVENTORY

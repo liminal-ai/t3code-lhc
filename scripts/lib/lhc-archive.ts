@@ -26,11 +26,19 @@ export function isArchiveTarget(
   return ARCHIVE_TARGETS.find((target) => target.platform === platform && target.arch === arch);
 }
 
+/**
+ * Helper scripts shipped under `<archive>/scripts/` so the store carries the
+ * install and migration tools the activation handoff runs (lhc.8). A fixed
+ * list, not the repo's `scripts/` tree.
+ */
+export const ARCHIVE_SCRIPTS = ["install-lhc.sh", "migrate-claude-lhc-driver.py"] as const;
+
 export const ARCHIVE_ROOTS = [
   "manifest.json",
   "apps/server/dist",
   "node_modules",
   LHC_SIDECAR_ARCHIVE_ROOT,
+  "scripts",
 ] as const;
 
 export interface ArchiveIdentity {
@@ -74,6 +82,7 @@ export interface ArchiveManifest {
   readonly arch: ArchiveArch;
   readonly node: string;
   readonly roots: ReadonlyArray<string>;
+  readonly scripts: ReadonlyArray<string>;
   readonly sidecar: SidecarProvenance;
 }
 
@@ -98,6 +107,7 @@ export function buildManifest(input: {
     arch: input.arch,
     node: input.nodeEngine,
     roots: [...ARCHIVE_ROOTS],
+    scripts: [...ARCHIVE_SCRIPTS],
     sidecar: {
       repository: input.sidecar.repository,
       commit: input.sidecar.commit,

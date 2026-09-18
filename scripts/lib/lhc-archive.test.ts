@@ -3,6 +3,7 @@ import { describe, expect, it } from "@effect/vitest";
 
 import {
   ARCHIVE_ROOTS,
+  ARCHIVE_SCRIPTS,
   archiveFileName,
   archiveVersionFromFileName,
   buildManifest,
@@ -59,7 +60,8 @@ describe("lhc-archive", () => {
       platform: "linux",
       arch: "x64",
       node: ">=24.3.0",
-      roots: ["manifest.json", "apps/server/dist", "node_modules", "vendor/claude-lhc"],
+      roots: ["manifest.json", "apps/server/dist", "node_modules", "vendor/claude-lhc", "scripts"],
+      scripts: ["install-lhc.sh", "migrate-claude-lhc-driver.py"],
       sidecar,
     });
     expect("createdAt" in manifest).toBe(false);
@@ -249,5 +251,19 @@ describe("archiveExcludedPrefixes", () => {
     expect(
       result.every((prefix) => !"node_modules/node-pty/build/Release/pty.node".startsWith(prefix)),
     ).toBe(true);
+  });
+
+  it("ships the install and migration helpers under scripts/ and lists them in the manifest", () => {
+    expect(ARCHIVE_SCRIPTS).toEqual(["install-lhc.sh", "migrate-claude-lhc-driver.py"]);
+    expect(ARCHIVE_ROOTS).toContain("scripts");
+    const manifest = buildManifest({
+      identity: { version: "0.0.40-lhc.8", upstreamTag: "v0.0.40" },
+      commit: "0".repeat(40),
+      platform: "linux",
+      arch: "x64",
+      nodeEngine: ">=24",
+      sidecar: { repository: "r", commit: "c".repeat(40), claudeAgentSdk: "0.3.170" },
+    });
+    expect(manifest.scripts).toEqual([...ARCHIVE_SCRIPTS]);
   });
 });

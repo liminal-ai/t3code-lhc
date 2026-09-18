@@ -124,7 +124,11 @@ tracked by the LHC pin line in `lhc-release/RELEASES.md`.
   `install-links=true`). Optional `@anthropic-ai/claude-agent-sdk-*`
   platform packages are not shipped: T3 passes `pathToClaudeCodeExecutable`.
   The script refuses to emit an archive whose extracted tree does not answer
-  `--lhc-version` with the manifest identity.
+  `--lhc-version` with the manifest identity. It also ships `scripts/install-lhc.sh`
+  and `scripts/migrate-claude-lhc-driver.py` (`ARCHIVE_SCRIPTS`, listed in the
+  manifest, probed after packing) and fails before the server build when the
+  archive npm is not 11.16 (`LHC_ARCHIVE_NPM` points at an npm-cli.js).
+  Activation order for the steward: `lhc-release/ACTIVATION.md`.
   Builds are reproducible: two builds of one commit give one sha256 (no build time
   in the manifest, tar mtimes pinned to the commit time, `gzip -n`).
 - Install or update: `scripts/install-lhc.sh [--archive FILE | --use VERSION]`.

@@ -1,6 +1,10 @@
-# unreleased
+# 0.0.40-lhc.8
+
+Upstream remains v0.0.40. Sidecar pin LHC `fffdcc8e` (LHC main head at cut; cc-lhc 0.4.2 version commit, sidecar tree unchanged from `8f5c3276`).
 
 - **LHC sidebar fixes (F1, F3, F4).** Agent rows reserve room for the always-visible Unpin / Archive icons on touch widths, so they sit beside the time instead of over it. The phone drawer is the full window in portrait (under 600px) and upstream's sheet width above that; before, an invalid inline width let the drawer size to its content. Agent rows show a bold title and an accent dot when the latest turn completed after you last opened the thread (never while Running); opening the thread clears it. Not changed: the one-refresh lag after rename / pin / delete is the server round trip in every view; the remove-project warning toast is fully in view once its slide-in finishes, and it carries Dismiss and "Delete anyway".
+- **Helpers shipped in the archive.** `scripts/install-lhc.sh` and `scripts/migrate-claude-lhc-driver.py` are packed under `<archive>/scripts/` and listed in `manifest.json` (`scripts`), so the store's `current/scripts/` carries the install and migration tools the activation handoff runs. The archive build now checks for npm 11.16 up front (before the server build) and names `LHC_ARCHIVE_NPM` in the failure.
+- **Activation template.** `lhc-release/ACTIVATION.md`: stop → install → migrate → start, with rollback.
 
 # 0.0.40-lhc.7
 
