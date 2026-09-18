@@ -76,7 +76,7 @@ const ImportRuntimeRowLive = ProviderSessionRuntime.layer.pipe(
   Layer.provideMerge(SqlitePersistenceLayerLive),
 );
 
-export class ImportThreadLiveDispatchError extends Schema.TaggedErrorClass<ImportThreadLiveDispatchError>()(
+export class ImportThreadLiveDispatchError extends Schema.TaggedError<ImportThreadLiveDispatchError>()(
   "ImportThreadLiveDispatchError",
   {
     operation: Schema.Literal("dispatchLiveServer"),
@@ -89,7 +89,7 @@ export class ImportThreadLiveDispatchError extends Schema.TaggedErrorClass<Impor
   }
 }
 
-export class ImportThreadInputError extends Schema.TaggedErrorClass<ImportThreadInputError>()(
+export class ImportThreadInputError extends Schema.TaggedError<ImportThreadInputError>()(
   "ImportThreadInputError",
   {
     operation: Schema.Literal("validateImportInput"),
@@ -102,7 +102,7 @@ export class ImportThreadInputError extends Schema.TaggedErrorClass<ImportThread
   }
 }
 
-export class ImportThreadSourceError extends Schema.TaggedErrorClass<ImportThreadSourceError>()(
+export class ImportThreadSourceError extends Schema.TaggedError<ImportThreadSourceError>()(
   "ImportThreadSourceError",
   {
     operation: Schema.Literal("readHistory"),

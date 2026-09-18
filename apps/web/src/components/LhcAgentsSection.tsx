@@ -829,13 +829,7 @@ export function LhcAgentsSection(props: { readonly model: LhcAgentsModel }) {
                   className={`-ml-0.5 size-3.5 shrink-0 text-muted-foreground/70 transition-transform duration-150 ${group.expanded ? "rotate-90" : ""}`}
                 />
                 <span className="flex shrink-0">
-                  <ProjectFavicon
-                    environmentId={group.project.environmentId}
-                    cwd={group.project.workspaceRoot}
-                    projectName={group.project.title}
-                    faviconPath={group.project.faviconPath}
-                    projectIcon={group.project.projectIcon}
-                  />
+                  <ProjectFavicon project={group.project} />
                 </span>
                 <span className="truncate text-sm font-medium text-sidebar-foreground/90">
                   {group.project.displayName}

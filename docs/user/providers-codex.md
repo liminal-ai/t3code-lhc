@@ -75,6 +75,13 @@ Choose `LHC` when the provider's `Binary path` points at an LHC build. The Updat
 that binary's own `update` command. T3 Code does not look up a latest release for LHC builds, so
 the provider row shows the installed version with no "behind" badge, and Update stays available.
 
+## Codex says I hit a usage limit
+
+When Codex stops on a usage limit, the thread names the window that ran out and
+when it resets, when Codex reports them. Send the message again after the reset. On a workspace plan the
+message also says whether your workspace owner needs to add credits or raise the
+spend limit to continue sooner.
+
 ## Send feedback to OpenAI
 
 In an existing Codex thread, send `/feedback` with an optional description, for

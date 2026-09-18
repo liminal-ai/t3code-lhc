@@ -148,6 +148,25 @@ export const ARCHIVE_EXTRA_EXCLUDES = ["*.map"] as const;
  * node-pty prebuilds (and Windows conpty). Shared WSL exclusions drop the
  * other platforms' natives.
  */
+/**
+ * Shared exclusion list for the packed node_modules (the WSL runtime archive's
+ * list, carried here since upstream v0.0.42 folded it into its CLI archive).
+ */
+export const LHC_ARCHIVE_EXCLUDED_PREFIXES = [
+  "node_modules/@anthropic-ai/claude-agent-sdk-",
+  "node_modules/.bin",
+  "node_modules/.pnpm",
+  "node_modules/.modules.yaml",
+  "node_modules/.pnpm-workspace-state-v1.json",
+  "node_modules/node-pty/prebuilds/darwin-",
+  "node_modules/node-pty/prebuilds/win32-",
+  "node_modules/node-pty/build",
+  "node_modules/node-pty/third_party/conpty",
+  "node_modules/@ff-labs/fff-bin-win32-",
+  "node_modules/@yuuang/ffi-rs-win32-",
+  "node_modules/@msgpackr-extract/msgpackr-extract-win32-",
+] as const;
+
 export function archiveExcludedPrefixes(
   shared: ReadonlyArray<string>,
   platform: ArchivePlatform = "linux",

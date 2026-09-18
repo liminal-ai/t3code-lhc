@@ -36,9 +36,9 @@ import {
   createStageWorkspaceConfig,
   resolveFffNativeDependencies,
   STAGE_INSTALL_ARGS,
-  WSL_RUNTIME_ARCHIVE_EXCLUDED_PREFIXES,
 } from "./build-desktop-artifact.ts";
 import {
+  LHC_ARCHIVE_EXCLUDED_PREFIXES,
   ARCHIVE_SCRIPTS,
   type ArchiveArch,
   type ArchivePlatform,
@@ -476,7 +476,6 @@ function main() {
           allowBuilds: { ...workspace.allowBuilds },
           patchedDependencies,
           overrides,
-          linuxServerBackend: platform === "linux",
         }),
         nodeLinker: "hoisted" as const,
       }),
@@ -522,7 +521,7 @@ function main() {
       gnuTar,
       tarArguments({
         archivePath,
-        excludedPrefixes: archiveExcludedPrefixes(WSL_RUNTIME_ARCHIVE_EXCLUDED_PREFIXES, platform),
+        excludedPrefixes: archiveExcludedPrefixes(LHC_ARCHIVE_EXCLUDED_PREFIXES, platform),
         mtimeEpochSeconds: commitTime,
         forceLocal: archivePathNeedsForceLocal(archivePath),
       }),
