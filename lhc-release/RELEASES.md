@@ -5,6 +5,7 @@ are never ordered; "latest" is the GitHub marker set by the promote job.
 
 Live GitHub release objects (as of this ledger; the first is `latest`):
 
+- 0.0.40-lhc.8 | upstream v0.0.40 | commit 0a7f7eef1 | candidate run 35361500991 | promote run 35371746581 | published 2026-09-18
 - 0.0.40-lhc.7 | upstream v0.0.40 | commit a1c2635dc8d80e0c88751412f0313aa294a012d6 | candidate run 34792685798 | promote run 34793437033 | published 2026-09-14
 - 0.0.40-lhc.6 | upstream v0.0.40 | commit cc3be34bb57f0c48c426c13a6f21f2ac777008f2 | candidate run 34728810349 | promote run 34730962692 | published 2026-09-13T01:36:50Z
 - 0.0.40-lhc.5 | upstream v0.0.40 | commit 3ee3814f7fc89e112c71363a28eb892c622d1d87 | candidate run 34723691076 | promote run 34725419291 | published 2026-09-12T23:26:45Z | https://github.com/liminal-ai/t3code-lhc/releases/tag/lhc-v0.0.40-lhc.5
