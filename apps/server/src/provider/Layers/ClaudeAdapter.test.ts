@@ -542,6 +542,26 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  it.effect("refuses rollback on a claude-lhc instance without touching the session", () => {
+    const harness = makeHarness({ driverKind: CLAUDE_LHC_DRIVER_KIND });
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: CLAUDE_LHC_DRIVER_KIND,
+        runtimeMode: "full-access",
+      });
+      const before = harness.getLastCreateQueryInput();
+      const refused = yield* adapter.rollbackThread(THREAD_ID, 1).pipe(Effect.flip);
+      assert.match(refused.message, /not supported on Claude LHC threads/);
+      assert.equal(harness.getLastCreateQueryInput(), before);
+      assert.equal((yield* adapter.listSessions()).length, 1);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("forwards both token windows for a claude-lhc instance", () => {
     const harness = makeHarness({
       driverKind: CLAUDE_LHC_DRIVER_KIND,

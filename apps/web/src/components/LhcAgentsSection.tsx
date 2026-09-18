@@ -3,7 +3,7 @@
 // activity; flat or grouped by project (header context menu). Own rows, own
 // context menu, own collapse keys. Row actions reuse the shared thread hooks.
 import { ArchiveIcon, ChevronRightIcon, PinOffIcon } from "lucide-react";
-import React, { memo, useCallback, useMemo, useRef, useState } from "react";
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type ScopedThreadRef, type ThreadId } from "@t3tools/contracts";
 import {
   parseScopedThreadKey,
@@ -18,6 +18,8 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { useParams, useRouter } from "@tanstack/react-router";
+import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
+import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
 import { isDesktopLocalConnectionTarget, isWslConnectionTarget } from "../connection/desktopLocal";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { useThreadActions } from "../hooks/useThreadActions";
@@ -320,15 +322,51 @@ const LhcAgentRow = memo(function LhcAgentRow(props: {
       }),
     );
   }, []);
-  const navigateToThread = useCallback(() => {
+  const navigateToThread = useCallback((): Promise<void> => {
     if (useThreadSelectionStore.getState().selectedThreadKeys.size > 0) clearSelection();
     setSelectionAnchor(threadKey);
     if (isMobile) setOpenMobile(false);
-    void router.navigate({
+    return router.navigate({
       to: "/$environmentId/$threadId",
       params: buildThreadRouteParams(threadRef),
     });
   }, [clearSelection, isMobile, router, setOpenMobile, setSelectionAnchor, threadKey, threadRef]);
+  // Ported from upstream v0.0.42 SidebarThreadRow / handleThreadFileDrop: files
+  // dropped on an agent row queue for that thread and open it.
+  const queuePendingFileDrop = useSidebarPendingFileDropStore((s) => s.queuePendingFileDrop);
+  const clearPendingFileDrop = useSidebarPendingFileDropStore((s) => s.clearPendingFileDrop);
+  const [isFileDragOver, setIsFileDragOver] = useState(false);
+  const fileDropHandlers = useMemo(
+    () =>
+      makeWorkspaceFileDropHandlers({
+        setDragActive: setIsFileDragOver,
+        addFiles: (files) => {
+          void (async () => {
+            const dropId = queuePendingFileDrop({ threadRef, files });
+            const targetPathname = router.buildLocation({
+              to: "/$environmentId/$threadId",
+              params: buildThreadRouteParams(threadRef),
+            }).pathname;
+            if (targetPathname === router.state.location.pathname) return;
+            try {
+              await navigateToThread();
+              if (targetPathname !== router.state.location.pathname) {
+                clearPendingFileDrop(dropId);
+              }
+            } catch {
+              clearPendingFileDrop(dropId);
+            }
+          })();
+        },
+      }),
+    [clearPendingFileDrop, navigateToThread, queuePendingFileDrop, router, threadRef],
+  );
+  useEffect(() => {
+    if (!isFileDragOver) return;
+    const clearFileDrag = () => setIsFileDragOver(false);
+    window.addEventListener("dragend", clearFileDrag);
+    return () => window.removeEventListener("dragend", clearFileDrag);
+  }, [isFileDragOver]);
   const commitRename = useCallback(async () => {
     const value = renaming;
     setRenaming(null);
@@ -508,7 +546,7 @@ const LhcAgentRow = memo(function LhcAgentRow(props: {
         return;
       }
       if (isTrailingDoubleClick(event.detail)) return;
-      navigateToThread();
+      void navigateToThread();
     },
     [navigateToThread, orderedKeys, rangeSelectTo, threadKey, toggleThreadSelection],
   );
@@ -527,7 +565,7 @@ const LhcAgentRow = memo(function LhcAgentRow(props: {
     (event: React.KeyboardEvent) => {
       if (event.key !== "Enter" && event.key !== " ") return;
       event.preventDefault();
-      navigateToThread();
+      void navigateToThread();
     },
     [navigateToThread],
   );
@@ -546,13 +584,18 @@ const LhcAgentRow = memo(function LhcAgentRow(props: {
     "pointer-events-none absolute top-1/2 -translate-y-1/2 opacity-0 transition-opacity duration-150 max-sm:pointer-events-auto max-sm:opacity-100 group-hover/menu-sub-item:pointer-events-auto group-hover/menu-sub-item:opacity-100 group-focus-within/menu-sub-item:pointer-events-auto group-focus-within/menu-sub-item:opacity-100";
 
   return (
-    <SidebarMenuSubItem className="w-full" data-thread-item data-testid={`lhc-agent-${thread.id}`}>
+    <SidebarMenuSubItem
+      className="w-full"
+      data-thread-item
+      data-testid={`lhc-agent-${thread.id}`}
+      {...fileDropHandlers}
+    >
       <SidebarMenuSubButton
         render={rowRender}
         size="sm"
         isActive={isActive}
         data-testid={`thread-row-${thread.id}`}
-        className={`${resolveThreadRowClassName({ isActive, isSelected })} ${lhcRowSurfaceClassName({ isActive, isSelected })} relative isolate`}
+        className={`${resolveThreadRowClassName({ isActive, isSelected })} ${lhcRowSurfaceClassName({ isActive, isSelected })} relative isolate${isFileDragOver ? " ring-1 ring-inset ring-primary/70" : ""}`}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
         onKeyDown={handleKeyDown}

@@ -65,6 +65,23 @@ and trust.
    record conflicts, checks, the `claude:` review field, and wall time in the
    sync record. Fast-forward `main` after review.
 
+## Copies of upstream code (sync rule)
+
+Fork files that copy an upstream region are listed here with the upstream sha
+last ported. On any sync whose range touches a source, diff the source region
+(`git diff <last ported>..<tag> -- <source>`, scoped to the component) and
+record every hunk as ported or excluded, with the reason, in the SYNCS.md
+entry; then update the sha here. Copies drift silently otherwise.
+
+| Fork file                                                                                     | Upstream source (file, component)                                                            | Upstream sha last ported |
+| --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | ------------------------ |
+| `apps/web/src/components/LhcAgentsSection.tsx` (`LhcAgentRow`)                                | `apps/web/src/components/LegacySidebar.tsx`, `SidebarThreadRow` + `SidebarProjectThreadList` | v0.0.42 (`d81278aa6b`)   |
+| `apps/web/src/components/ui/sidebar.tsx` (watched hunk, mobile drawer width; see LHC sidebar) | `apps/web/src/components/ui/sidebar.tsx`, `Sidebar` mobile sheet                             | v0.0.42 (`d81278aa6b`)   |
+
+Not copies: `ClaudeLhcDriver.ts` is a factory over `makeClaudeDriver` (no
+duplicated body); `ClaudeLhcSidecar.ts` is fork-original on the adapter's
+`createQuery` seam and is covered by the `claude:` review field instead.
+
 ## Claude LHC driver (fork-only)
 
 Why a separate kind. `claude-lhc` is its own driver kind next to stock

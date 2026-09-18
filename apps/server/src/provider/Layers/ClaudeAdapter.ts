@@ -5137,6 +5137,16 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
   const rollbackThread: ClaudeAdapterShape["rollbackThread"] = Effect.fn("rollbackThread")(
     function* (threadId, numTurns) {
       const context = yield* requireSession(threadId);
+      // Fork: the LHC sidecar projects the native session and owns its ids, so a
+      // forked native session cannot be resumed and the LHC record would restore
+      // the rolled-back turns at the next compaction. Refuse for that kind.
+      if (PROVIDER !== STOCK_PROVIDER) {
+        return yield* new ProviderAdapterRequestError({
+          provider: PROVIDER,
+          method: "thread/rollback",
+          detail: "Rollback is not supported on Claude LHC threads. Start a new thread instead.",
+        });
+      }
       if (!Number.isInteger(numTurns) || numTurns < 1) {
         return yield* new ProviderAdapterValidationError({
           provider: PROVIDER,
