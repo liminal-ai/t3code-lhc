@@ -12,6 +12,7 @@ import { useClientSettings, useUpdateClientSettings } from "~/hooks/useSettings"
 import type { SidebarThreadSummary } from "../types";
 import LegacySidebar, { LegacySidebarSlotsContext, type LegacySidebarSlots } from "./LegacySidebar";
 import { LhcAgentsSection, useLhcAgentsModel } from "./LhcAgentsSection";
+import { LhcGroupsSection } from "./LhcGroupsSection";
 import { lhcRowSurfaceClassName } from "./LhcSidebar.logic";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 
@@ -46,7 +47,12 @@ export default function LhcSidebar() {
   );
   const slots = useMemo(
     (): LegacySidebarSlots => ({
-      above: <LhcAgentsSection model={model} />,
+      above: (
+        <>
+          <LhcAgentsSection model={model} />
+          <LhcGroupsSection />
+        </>
+      ),
       treeThreadFilter,
       projectsExpanded,
       onToggleProjectsExpanded,

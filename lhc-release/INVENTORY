@@ -120,6 +120,14 @@ apps/web/src/components/AppSidebarLayout.tsx
 apps/web/src/components/LhcSidebar.logic.test.ts
 apps/web/src/components/LhcSidebar.logic.ts
 apps/web/src/components/LhcSidebar.tsx
+apps/web/src/components/LhcGroupChat.test.tsx
+apps/web/src/components/LhcGroupChat.tsx
+apps/web/src/components/LhcGroupsSection.tsx
+apps/web/src/lhcGroups.logic.test.ts
+apps/web/src/lhcGroups.logic.ts
+apps/web/src/lhcGroups.test.ts
+apps/web/src/lhcGroups.ts
+apps/web/src/routes/_chat.groups.$groupId.tsx
 apps/web/src/components/settings/SettingsPanels.tsx
 apps/web/src/hooks/useSettings.test.ts
 apps/web/src/hooks/useSettings.ts
@@ -127,5 +135,9 @@ apps/web/src/routes/_chat.tsx
 apps/desktop/src/settings/DesktopClientSettings.test.ts
 apps/web/src/components/LegacySidebar.tsx
 apps/web/src/components/ui/sidebar.tsx
+apps/server/src/server.ts
+apps/web/src/routeTree.gen.ts
+apps/server/src/lhcConsoleGroupsProxy.test.ts
+apps/server/src/lhcConsoleGroupsProxy.ts
 apps/web/src/components/LhcAgentsSection.tsx
 apps/web/src/components/LhcSidebar.removal.test.ts

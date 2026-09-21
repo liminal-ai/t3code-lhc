@@ -300,6 +300,38 @@ upstream readers of the legacy switch agree with the chosen view. Section state
 lives in client settings `lhcAgentsExpanded`, `lhcAgentsGroupByProject`,
 `lhcProjectsExpanded`.
 
+## Group chat view (fork-only)
+
+A chat page per lhc-console group line (`docs/spec-group-*` briefs in the
+console repo). The console stays the source of truth; t3code proxies and
+renders. Files: `apps/server/src/lhcConsoleGroupsProxy.ts` (one raw route
+layer, `/api/groups/*`, registered in `server.ts` next to the device-hub
+proxy), `apps/web/src/lhcGroups.ts` (client + polling hooks),
+`lhcGroups.logic.ts` (wake rule, `@` autocomplete, merge, read markers),
+`components/LhcGroupsSection.tsx` (sidebar section under Agents, in the same
+above-slot), `components/LhcGroupChat.tsx` (transcript, composer),
+`routes/_chat.groups.$groupId.tsx` (the page; `routeTree.gen.ts` regenerated).
+
+The proxy authenticates the browser with the pairing session (read scope on
+GET, operate scope on POST), reads the console owner bearer from
+`~/.lhc-console/relay-token` per request (`LHC_CONSOLE_TOKEN_FILE`,
+`LHC_CONSOLE_URL` override; default `http://127.0.0.1:5959`), forwards the
+four console routes (`GET /api/groups`, `GET /api/groups/:id`, `GET`/`POST`
+`/api/groups/:id/messages`) and passes status and body through. A console 401
+answers 502 (server misconfiguration, never the browser's fault); a missing
+token file 503; an unreachable console 502. No browser holds the console
+token.
+
+The page polls `since=<seq>` every 2s while open and the group detail (member
+cursors) every fifth poll or when lines arrive. Owner lines render
+right-aligned as plain text; member replies through `ChatMarkdown`; each
+member's cursor shows as a "read to here" marker. The composer's wake preview
+and `@` autocomplete follow the console's tag rule (member key with or without
+`@` as a word; `@all` / `@everyone` / `@both` wake everyone; untagged text
+wakes nobody). Enter sends, Shift+Enter breaks a line, Tab or Enter picks a
+mention while the menu is open. The Groups section hides itself when the
+proxy answers 404 (a server without it) or the console has no groups.
+
 ## Default instance seed (fork-only)
 
 Stock synthesizes one instance per built-in driver from `providers.<kind>`

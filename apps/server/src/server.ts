@@ -70,6 +70,7 @@ import * as McpSessionRegistry from "./mcp/McpSessionRegistry.ts";
 import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
 import * as DeviceService from "./device/DeviceService.ts";
 import { deviceHubProxyRouteLayer } from "./device/DeviceHubProxy.ts";
+import { lhcConsoleGroupsProxyRouteLayer } from "./lhcConsoleGroupsProxy.ts"; // Fork (LHC): group chat page
 import * as PreviewManager from "./preview/Manager.ts";
 import * as PortScanner from "./preview/PortScanner.ts";
 import * as ProcessRunner from "./processRunner.ts";
@@ -576,6 +577,7 @@ export const makeRoutesLayer = Layer.mergeAll(
     assetRouteLayer,
     attachmentUploadRouteLayer,
     deviceHubProxyRouteLayer,
+    lhcConsoleGroupsProxyRouteLayer, // Fork (LHC)
     staticAndDevRouteLayer,
     websocketRpcRouteLayer,
   ),
