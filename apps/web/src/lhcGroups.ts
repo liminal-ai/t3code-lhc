@@ -37,8 +37,10 @@ async function request<T>(
   path: string,
   init?: RequestInit,
   signal?: AbortSignal,
+  searchParams?: Record<string, string>,
 ): Promise<T> {
-  const response = await fetchFn(resolvePrimaryEnvironmentHttpUrl(path), {
+  // The query travels separately: the resolver assigns `pathname`, which would encode a `?`.
+  const response = await fetchFn(resolvePrimaryEnvironmentHttpUrl(path, searchParams), {
     credentials: "include",
     ...init,
     ...(signal ? { signal } : {}),
@@ -60,19 +62,35 @@ export function makeLhcGroupsClient(fetchFn: FetchLike = (input, init) => fetch(
   return {
     list: (signal?: AbortSignal) =>
       request<ReadonlyArray<LhcGroupSummary>>(fetchFn, "/api/groups", undefined, signal),
-    detail: (groupId: string, signal?: AbortSignal) =>
-      request<LhcGroupDetail>(
-        fetchFn,
-        `/api/groups/${encodeURIComponent(groupId)}`,
-        undefined,
-        signal,
-      ),
+    /** Group detail with cursors; a console without the detail route (404) falls back to the list. */
+    detail: async (groupId: string, signal?: AbortSignal): Promise<LhcGroupDetail> => {
+      try {
+        return await request<LhcGroupDetail>(
+          fetchFn,
+          `/api/groups/${encodeURIComponent(groupId)}`,
+          undefined,
+          signal,
+        );
+      } catch (err) {
+        if (!(err instanceof LhcGroupsApiError && err.status === 404)) throw err;
+        const summary = (
+          await request<ReadonlyArray<LhcGroupSummary>>(fetchFn, "/api/groups", undefined, signal)
+        ).find((group) => group.id === groupId);
+        if (!summary) throw err;
+        return {
+          ...summary,
+          members: summary.members.map((member) => ({ ...member, cursorSeq: 0 })),
+          lastSeq: 0,
+        };
+      }
+    },
     messages: (groupId: string, since: number, signal?: AbortSignal) =>
       request<{ messages: ReadonlyArray<LhcGroupMessage>; lastSeq: number }>(
         fetchFn,
-        `/api/groups/${encodeURIComponent(groupId)}/messages?since=${since}`,
+        `/api/groups/${encodeURIComponent(groupId)}/messages`,
         undefined,
         signal,
+        { since: String(since) },
       ),
     post: (groupId: string, text: string, clientId: string) =>
       request<LhcGroupPostResult>(fetchFn, `/api/groups/${encodeURIComponent(groupId)}/messages`, {

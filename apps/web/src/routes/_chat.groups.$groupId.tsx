@@ -22,12 +22,19 @@ function GroupChatRouteView() {
   }, [groupName]);
 
   // Follow new lines while the reader sits at the bottom; leave them alone otherwise.
+  // Markdown renders after the lines mount, so the content's size, not the line
+  // count, is what keeps the view pinned.
   const lineCount = state.messages.length;
   useEffect(() => {
     const element = scrollRef.current;
-    if (lineCount > 0 && element && stickToBottom.current) {
-      element.scrollTop = element.scrollHeight;
-    }
+    if (!element || lineCount === 0) return;
+    const pin = () => {
+      if (stickToBottom.current) element.scrollTop = element.scrollHeight;
+    };
+    pin();
+    const observer = new ResizeObserver(pin);
+    for (const child of element.children) observer.observe(child);
+    return () => observer.disconnect();
   }, [lineCount]);
 
   const members = state.group?.members ?? [];
