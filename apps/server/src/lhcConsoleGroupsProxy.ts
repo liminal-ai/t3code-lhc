@@ -112,15 +112,12 @@ const handler = Effect.gen(function* () {
   ).pipe(
     HttpClientRequest.bearerToken(token),
     HttpClientRequest.setHeader("accept", "application/json"),
+    // bodyStream stamps its own content type (octet-stream by default), so the
+    // browser's JSON type has to travel as the body option, not as a header.
     request.method === "POST"
-      ? (self) =>
-          self.pipe(
-            HttpClientRequest.setHeader(
-              "content-type",
-              request.headers["content-type"] ?? "application/json",
-            ),
-            HttpClientRequest.bodyStream(request.stream),
-          )
+      ? HttpClientRequest.bodyStream(request.stream, {
+          contentType: request.headers["content-type"] ?? "application/json",
+        })
       : (self) => self,
   );
   const response = yield* httpClient

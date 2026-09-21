@@ -36,6 +36,7 @@ interface Seen {
   url: string;
   method: string;
   authorization: string | undefined;
+  contentType: string | undefined;
   body: string | undefined;
 }
 
@@ -60,6 +61,7 @@ const fixture = (
         url: request.url,
         method: request.method,
         authorization: request.headers.authorization,
+        contentType: request.headers["content-type"],
         body,
       });
       if (upstream === "down") return yield* Effect.die(new Error("ECONNREFUSED"));
@@ -119,6 +121,7 @@ describe("lhc console groups proxy", () => {
         url: "http://console.test:5959/api/groups/spec-group/messages?since=2",
         method: "GET",
         authorization: "Bearer console-secret",
+        contentType: undefined,
         body: undefined,
       },
     ]);
@@ -148,6 +151,8 @@ describe("lhc console groups proxy", () => {
     expect(operator.seen[0]).toMatchObject({
       method: "POST",
       authorization: "Bearer console-secret",
+      // The console (fastify) answers 415 to anything but JSON here.
+      contentType: "application/json",
       body: '{"text":"@flint hi","id":"c1"}',
     });
   });
