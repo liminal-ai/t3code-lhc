@@ -5,6 +5,10 @@ import {
   mentionCandidates,
   mentionQueryAt,
   mergeMessages,
+  parseRecipients,
+  recipientsStorageKey,
+  serializeRecipients,
+  workingMembers,
   readMarkersAt,
   wakePreviewLabel,
   type LhcGroupMessage,
@@ -27,6 +31,41 @@ describe("group wake rule (mirrors the console router)", () => {
     expect(draftWakes("plain note", members)).toEqual([]);
     expect(draftWakes("mail me@flint.dev", members)).toEqual([]);
     expect(draftWakes("flintlock", members)).toEqual([]);
+  });
+
+  it("unions checked default recipients with the tags; @all still wakes everyone", () => {
+    const ids = (text: string, checked: string[]) =>
+      draftWakes(text, members, new Set(checked)).map((m) => m.id);
+    expect(ids("no tags", ["sable"])).toEqual(["sable"]);
+    expect(ids("@flint look", ["sable"])).toEqual(["sable", "flint"]);
+    expect(ids("@sable look", ["sable"])).toEqual(["sable"]);
+    expect(ids("plain", [])).toEqual([]);
+    expect(ids("@all", ["sable"])).toEqual(["sable", "flint"]);
+    expect(wakePreviewLabel("plain", members, new Set(["sable", "flint"]))).toBe(
+      "Wakes everyone: Sable, Flint",
+    );
+    expect(wakePreviewLabel("plain", members, new Set(["flint"]))).toBe("Wakes Flint");
+  });
+
+  it("parses stored recipients, dropping unknown ids and bad JSON, and round-trips", () => {
+    expect([...parseRecipients('["flint","reed"]', members)]).toEqual(["flint"]);
+    expect([...parseRecipients("nope", members)]).toEqual([]);
+    expect([...parseRecipients(null, members)]).toEqual([]);
+    expect([...parseRecipients('{"a":1}', members)]).toEqual([]);
+    expect(parseRecipients(serializeRecipients(new Set(["sable"])), members)).toEqual(
+      new Set(["sable"]),
+    );
+    expect(recipientsStorageKey("spec-group")).toBe("t3code:roundtable:spec-group:recipients");
+  });
+
+  it("lists working members from the console activity", () => {
+    expect(
+      workingMembers([
+        { ...members[0]!, activity: { state: "idle" } },
+        { ...members[1]!, activity: { state: "working", wakeSeq: 1, since: "t" } },
+        { id: "x", label: "X" },
+      ]).map((m) => m.id),
+    ).toEqual(["flint"]);
   });
 
   it("labels the preview", () => {

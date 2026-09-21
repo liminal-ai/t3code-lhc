@@ -1,12 +1,19 @@
-// Fork-only (LHC): pure logic for the group chat page. The wake rule mirrors
-// the console router: a member wakes when its key (with or without @) appears
-// as a word; @all / @everyone / @both wake every member; untagged text wakes
-// nobody. Autocomplete offers member keys and "all" after an @ at the caret.
+// Fork-only (LHC): pure logic for the roundtable page (a console group line).
+// The wake rule mirrors the console router: a member wakes when its key (with
+// or without @) appears as a word, or when it is a checked default recipient;
+// @all / @everyone / @both wake every member; untagged text with nothing
+// checked wakes nobody. Autocomplete offers member keys and "all" after an @.
+
+export type LhcMemberActivity =
+  | { readonly state: "working"; readonly wakeSeq: number; readonly since: string }
+  | { readonly state: "idle" };
 
 export interface LhcGroupMember {
   readonly id: string;
   readonly label: string;
   readonly cursorSeq?: number;
+  /** From the console's detail route; absent on the list route and older consoles. */
+  readonly activity?: LhcMemberActivity;
 }
 
 export interface LhcGroupSummary {
@@ -32,20 +39,27 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** Members a draft would wake, in member order. */
+/** Members a draft would wake, in member order: tags in the text, unioned with the checked ids. */
 export function draftWakes(
   text: string,
   members: ReadonlyArray<LhcGroupMember>,
+  checked: ReadonlySet<string> = new Set(),
 ): ReadonlyArray<LhcGroupMember> {
   if (/(?<![\w@])@(?:all|everyone|both)\b/i.test(text)) return members;
-  return members.filter((member) =>
-    new RegExp(String.raw`(?<![\w@])@?${escapeRegExp(member.id)}\b`, "i").test(text),
+  return members.filter(
+    (member) =>
+      checked.has(member.id) ||
+      new RegExp(String.raw`(?<![\w@])@?${escapeRegExp(member.id)}\b`, "i").test(text),
   );
 }
 
-export function wakePreviewLabel(text: string, members: ReadonlyArray<LhcGroupMember>): string {
+export function wakePreviewLabel(
+  text: string,
+  members: ReadonlyArray<LhcGroupMember>,
+  checked: ReadonlySet<string> = new Set(),
+): string {
   if (!text.trim()) return "";
-  const wakes = draftWakes(text, members);
+  const wakes = draftWakes(text, members, checked);
   if (wakes.length === 0) return "Wakes nobody (untagged text enters the transcript only)";
   if (wakes.length === members.length && members.length > 1)
     return `Wakes everyone: ${wakes.map((m) => m.label).join(", ")}`;
@@ -106,6 +120,38 @@ export function mergeMessages(
 
 export function lastSeqOf(messages: ReadonlyArray<LhcGroupMessage>): number {
   return messages.length ? messages[messages.length - 1]!.seq : 0;
+}
+
+/** Members the console reports as working on a reply, in member order. */
+export function workingMembers(
+  members: ReadonlyArray<LhcGroupMember>,
+): ReadonlyArray<LhcGroupMember> {
+  return members.filter((member) => member.activity?.state === "working");
+}
+
+/** localStorage key for a roundtable's default recipients (checked member ids). */
+export function recipientsStorageKey(groupId: string): string {
+  return `t3code:roundtable:${groupId}:recipients`;
+}
+
+/** Parse a stored recipients value; unknown ids are dropped, bad JSON yields nothing. */
+export function parseRecipients(
+  raw: string | null | undefined,
+  members: ReadonlyArray<LhcGroupMember>,
+): ReadonlySet<string> {
+  if (!raw) return new Set();
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    const known = new Set(members.map((member) => member.id));
+    return new Set(parsed.filter((id): id is string => typeof id === "string" && known.has(id)));
+  } catch {
+    return new Set();
+  }
+}
+
+export function serializeRecipients(checked: ReadonlySet<string>): string {
+  return JSON.stringify([...checked]);
 }
 
 /** Members whose cursor sits at `seq` (their "read to here" marker). */

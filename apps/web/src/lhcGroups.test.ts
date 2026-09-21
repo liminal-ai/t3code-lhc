@@ -41,6 +41,20 @@ describe("group proxy client", () => {
     ]);
   });
 
+  it("posts wake ids only when there are default recipients", async () => {
+    const calls: unknown[] = [];
+    const fetchFn = async (_input: string, init?: RequestInit) => {
+      calls.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify({ seq: 1, wakes: [] }), { status: 202 });
+    };
+    await makeLhcGroupsClient(fetchFn).post("spec-group", "hi", "c1", ["sable"]);
+    await makeLhcGroupsClient(fetchFn).post("spec-group", "hi", "c2", []);
+    expect(calls).toEqual([
+      { text: "hi", id: "c1", wake: ["sable"] },
+      { text: "hi", id: "c2" },
+    ]);
+  });
+
   it("posts the owner message with a client id as JSON", async () => {
     const { fetchFn, calls } = fakeFetch(202, {
       seq: 4,

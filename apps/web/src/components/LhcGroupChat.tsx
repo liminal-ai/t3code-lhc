@@ -1,8 +1,9 @@
-// Fork-only (LHC): group chat page pieces. The transcript renders the console's
+// Fork-only (LHC): roundtable page pieces. The transcript renders the console's
 // lines oldest-first: the owner's lines right-aligned, member replies as
-// markdown under the member's name, and a "read to here" marker at each
-// member's cursor. The composer posts through the proxy with @-autocomplete
-// over member keys and a wake preview that follows the console's tag rule.
+// markdown under the member's name, a "read to here" marker at each member's
+// cursor, and a pending row per member the console reports as working. The
+// composer posts through the proxy with @-autocomplete over member keys,
+// default-recipient checkboxes, and a wake preview of the union.
 import { SendIcon } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useCallback, useMemo, useRef, useState } from "react";
 import {
@@ -12,6 +13,7 @@ import {
   OWNER_SENDER_ID,
   readMarkersAt,
   wakePreviewLabel,
+  workingMembers,
   type LhcGroupMember,
   type LhcGroupMessage,
   type MentionQuery,
@@ -19,7 +21,47 @@ import {
 import { formatRelativeTimeLabel } from "../timestampFormat";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
+import { Checkbox } from "./ui/checkbox";
+import { Spinner } from "./ui/spinner";
 import { Textarea } from "./ui/textarea";
+
+// Same colors and pulse as the thread view's "Working" status pill (Sidebar.logic).
+const WORKING_TEXT_CLASS = "text-sky-600 dark:text-sky-300/80";
+const WORKING_DOT_CLASS = "bg-sky-500 dark:bg-sky-300/80 animate-status-pulse";
+
+/** Header strip: every member with a live dot while the console says it is working. */
+export function LhcRoundtableMemberStrip(props: {
+  readonly members: ReadonlyArray<LhcGroupMember>;
+}) {
+  return (
+    <ul className="flex min-w-0 items-center gap-3 truncate" data-testid="lhc-roundtable-members">
+      {props.members.map((member) => {
+        const working = member.activity?.state === "working";
+        return (
+          <li
+            key={member.id}
+            className={cn(
+              "flex items-center gap-1 text-xs",
+              working ? WORKING_TEXT_CLASS : "text-secondary-label",
+            )}
+            data-testid={`lhc-roundtable-member-${member.id}`}
+            data-working={working ? "true" : undefined}
+          >
+            <span
+              aria-hidden="true"
+              className={cn(
+                "size-1.5 rounded-full",
+                working ? WORKING_DOT_CLASS : "bg-foreground/25",
+              )}
+            />
+            <span className="truncate">{member.label}</span>
+            <span className="sr-only">{working ? " is working" : ""}</span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
 
 export function LhcGroupTranscript(props: {
   readonly messages: ReadonlyArray<LhcGroupMessage>;
@@ -29,6 +71,7 @@ export function LhcGroupTranscript(props: {
   readonly onOpenReply?: ((message: LhcGroupMessage) => void) | undefined;
 }) {
   const { messages, members, renderMarkdown } = props;
+  const working = workingMembers(members);
   return (
     <ol className="flex flex-col gap-3 px-3 py-4 sm:px-6" data-testid="lhc-group-transcript">
       {messages.map((message) => {
@@ -72,16 +115,37 @@ export function LhcGroupTranscript(props: {
           </li>
         );
       })}
+      {working.map((member) => (
+        <li
+          key={`working-${member.id}`}
+          className="flex items-start"
+          data-testid={`lhc-group-working-${member.id}`}
+          role="status"
+        >
+          <div
+            className={cn(
+              "flex items-center gap-2 rounded-2xl rounded-tl-sm bg-foreground/5 px-3 py-2 text-sm",
+              WORKING_TEXT_CLASS,
+            )}
+          >
+            <Spinner />
+            <span>{member.label} is working</span>
+          </div>
+        </li>
+      ))}
     </ol>
   );
 }
 
 export function LhcGroupComposer(props: {
   readonly members: ReadonlyArray<LhcGroupMember>;
-  readonly onSend: (text: string) => Promise<unknown>;
+  readonly onSend: (text: string, wake: ReadonlyArray<string>) => Promise<unknown>;
   readonly disabled?: boolean | undefined;
+  /** Default recipients (checked member ids); owned by the page so it can persist them. */
+  readonly checked: ReadonlySet<string>;
+  readonly onCheckedChange: (memberId: string, checked: boolean) => void;
 }) {
-  const { members, onSend, disabled } = props;
+  const { members, onSend, disabled, checked, onCheckedChange } = props;
   const [text, setText] = useState("");
   const [caret, setCaret] = useState(0);
   const [sending, setSending] = useState(false);
@@ -98,7 +162,7 @@ export function LhcGroupComposer(props: {
     () => (mention ? mentionCandidates(members, mention.query) : []),
     [mention, members],
   );
-  const preview = useMemo(() => wakePreviewLabel(text, members), [text, members]);
+  const preview = useMemo(() => wakePreviewLabel(text, members, checked), [text, members, checked]);
   const mentionQuery = mention?.query;
   const candidateIndex = candidate.query === mentionQuery ? candidate.index : 0;
   const setCandidateIndex = (update: (index: number) => number) =>
@@ -132,7 +196,10 @@ export function LhcGroupComposer(props: {
     setSending(true);
     setSendError(null);
     try {
-      await onSend(trimmed);
+      await onSend(
+        trimmed,
+        members.filter((member) => checked.has(member.id)).map((member) => member.id),
+      );
       setText("");
       setCaret(0);
     } catch (err) {
@@ -141,7 +208,7 @@ export function LhcGroupComposer(props: {
       setSending(false);
       inputRef.current?.focus();
     }
-  }, [disabled, onSend, sending, text]);
+  }, [checked, disabled, members, onSend, sending, text]);
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (candidates.length && mention) {
@@ -237,11 +304,35 @@ export function LhcGroupComposer(props: {
           </Button>
         </div>
       </div>
-      <div
-        className={cn("min-h-4 text-xs", sendError ? "text-destructive" : "text-secondary-label")}
-        data-testid="lhc-group-wake-preview"
-      >
-        {sendError ?? preview}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <div className="flex items-center gap-3" data-testid="lhc-group-recipients">
+          {members.map((member) => {
+            // The checkbox sits inside its label: base-ui assigns its own id, so htmlFor cannot bind.
+            return (
+              <label
+                key={member.id}
+                className="flex cursor-pointer items-center gap-1.5 text-xs text-secondary-label select-none"
+              >
+                <Checkbox
+                  checked={checked.has(member.id)}
+                  disabled={disabled}
+                  data-testid={`lhc-recipient-${member.id}`}
+                  onCheckedChange={(value) => onCheckedChange(member.id, value === true)}
+                />
+                {member.label}
+              </label>
+            );
+          })}
+        </div>
+        <div
+          className={cn(
+            "min-h-4 min-w-0 flex-1 text-xs",
+            sendError ? "text-destructive" : "text-secondary-label",
+          )}
+          data-testid="lhc-group-wake-preview"
+        >
+          {sendError ?? preview}
+        </div>
       </div>
     </form>
   );

@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
-import { LhcGroupComposer, LhcGroupTranscript } from "./LhcGroupChat";
+import { LhcGroupComposer, LhcGroupTranscript, LhcRoundtableMemberStrip } from "./LhcGroupChat";
 import { LhcGroupsSectionView } from "./LhcGroupsSection";
 
 const members = [
@@ -31,7 +31,67 @@ const transcript = [
   },
 ];
 
-describe("group chat page pieces", () => {
+const working = { state: "working", wakeSeq: 4, since: "2026-09-21T12:41:00.000Z" } as const;
+const idle = { state: "idle" } as const;
+const noChecks = new Set<string>();
+
+describe("roundtable page pieces", () => {
+  it("renders a pending 'is working' row per working member after the lines, none when idle", () => {
+    const html = renderToStaticMarkup(
+      <LhcGroupTranscript
+        messages={transcript}
+        members={[
+          { ...members[0]!, activity: working },
+          { ...members[1]!, activity: idle },
+        ]}
+        renderMarkdown={(text) => <span>{text}</span>}
+      />,
+    );
+    expect(html).toContain('data-testid="lhc-group-working-sable"');
+    expect(html).toMatch(/lhc-group-working-sable"[^>]*role="status"/);
+    expect(html).toContain("Sable is working");
+    expect(html).not.toContain("lhc-group-working-flint");
+    expect(html.indexOf('data-seq="3"')).toBeLessThan(html.indexOf("lhc-group-working-sable"));
+    const quiet = renderToStaticMarkup(
+      <LhcGroupTranscript
+        messages={transcript}
+        members={members}
+        renderMarkdown={(text) => <span>{text}</span>}
+      />,
+    );
+    expect(quiet).not.toContain("is working");
+  });
+
+  it("renders the member strip with a live dot only on working members", () => {
+    const html = renderToStaticMarkup(
+      <LhcRoundtableMemberStrip
+        members={[
+          { ...members[0]!, activity: idle },
+          { ...members[1]!, activity: working },
+        ]}
+      />,
+    );
+    expect(html).toMatch(/lhc-roundtable-member-flint"[^>]*data-working="true"/);
+    expect(html).not.toMatch(/lhc-roundtable-member-sable"[^>]*data-working/);
+    expect(html).toContain("animate-status-pulse");
+    expect(html.match(/animate-status-pulse/g)).toHaveLength(1);
+  });
+
+  it("renders one recipient checkbox per member, checked from the page's set, and the union preview", () => {
+    const html = renderToStaticMarkup(
+      <LhcGroupComposer
+        members={members}
+        onSend={async () => undefined}
+        checked={new Set(["flint"])}
+        onCheckedChange={() => {}}
+      />,
+    );
+    expect(html).toContain('data-testid="lhc-recipient-sable"');
+    expect(html).toContain('data-testid="lhc-recipient-flint"');
+    expect(html).toMatch(/aria-checked="true"[^>]*lhc-recipient-flint"/);
+    expect(html).toMatch(/aria-checked="false"[^>]*lhc-recipient-sable"/);
+  });
+
   it("renders the transcript oldest-first with owner lines distinct and read markers at cursors", () => {
     const html = renderToStaticMarkup(
       <LhcGroupTranscript
@@ -59,14 +119,19 @@ describe("group chat page pieces", () => {
 
   it("renders the composer with member placeholder and an empty preview", () => {
     const html = renderToStaticMarkup(
-      <LhcGroupComposer members={members} onSend={async () => undefined} />,
+      <LhcGroupComposer
+        members={members}
+        onSend={async () => undefined}
+        checked={noChecks}
+        onCheckedChange={() => {}}
+      />,
     );
     expect(html).toContain('placeholder="@sable … or @all"');
     expect(html).toContain('data-testid="lhc-group-send"');
     expect(html).not.toContain("lhc-group-mention-menu");
   });
 
-  it("renders the sidebar Groups section with one row per group and the active row marked", () => {
+  it("renders the sidebar Roundtable section with one row per group and the active row marked", () => {
     const html = renderToStaticMarkup(
       <LhcGroupsSectionView
         groups={[
@@ -85,7 +150,8 @@ describe("group chat page pieces", () => {
         onSelect={() => {}}
       />,
     );
-    expect(html).toContain("Groups (2)");
+    expect(html).toContain("Roundtable (2)");
+    expect(html).not.toContain("Groups (");
     expect(html).toContain('data-testid="lhc-group-row-spec-group"');
     expect(html).toContain('data-testid="lhc-group-row-other"');
     expect(html.match(/data-active="true"/g)).toHaveLength(1);

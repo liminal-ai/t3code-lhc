@@ -1,4 +1,4 @@
-// Fork-only (LHC): the Groups section of the LHC sidebar. Lists the console's
+// Fork-only (LHC): the Roundtable section of the LHC sidebar. Lists the console's
 // group lines (proxied by this server); selecting one opens the group chat
 // page. Collapse is component state: no client setting, no upstream touch.
 import { ChevronRightIcon, UsersIcon } from "lucide-react";
@@ -36,7 +36,7 @@ export function LhcGroupsSection() {
       onToggleExpanded={() => setExpanded((value) => !value)}
       onSelect={(groupId) => {
         if (isMobile) setOpenMobile(false);
-        void router.navigate({ to: "/groups/$groupId", params: { groupId } });
+        void router.navigate({ to: "/roundtable/$groupId", params: { groupId } });
       }}
     />
   );
@@ -56,7 +56,7 @@ export const LhcGroupsSectionView = memo(function LhcGroupsSectionView(props: {
       <button
         type="button"
         aria-expanded={expanded}
-        aria-label={`Groups (${groups.length})`}
+        aria-label={`Roundtable (${groups.length})`}
         data-testid="lhc-groups-header"
         className="mb-1 flex h-6 w-full cursor-pointer items-center gap-1 rounded-md pl-1.5 pr-1.5 text-left text-xs font-medium text-secondary-label hover:bg-foreground/5 hover:text-foreground"
         onClick={onToggleExpanded}
@@ -64,7 +64,7 @@ export const LhcGroupsSectionView = memo(function LhcGroupsSectionView(props: {
         <ChevronRightIcon
           className={`size-3.5 shrink-0 transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
         />
-        <span className="truncate">Groups ({groups.length})</span>
+        <span className="truncate">Roundtable ({groups.length})</span>
       </button>
       {expanded ? (
         <SidebarMenu>

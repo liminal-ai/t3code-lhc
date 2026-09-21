@@ -1,18 +1,54 @@
-// Fork-only (LHC): the group chat page. Same transcript and router as the
+// Fork-only (LHC): the roundtable page. Same transcript and router as the
 // group's iMessage line, read through this server's console proxy.
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import ChatMarkdown from "~/components/ChatMarkdown";
-import { LhcGroupComposer, LhcGroupTranscript } from "~/components/LhcGroupChat";
+import {
+  LhcGroupComposer,
+  LhcGroupTranscript,
+  LhcRoundtableMemberStrip,
+} from "~/components/LhcGroupChat";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
 import { SidebarInset } from "~/components/ui/sidebar";
 import { Spinner } from "~/components/ui/spinner";
 import { isElectron } from "../env";
 import { useLhcGroupTranscript } from "../lhcGroups";
+import { parseRecipients, recipientsStorageKey, serializeRecipients } from "../lhcGroups.logic";
 
-function GroupChatRouteView() {
+function readStoredRecipients(groupId: string): string | null {
+  try {
+    return window.localStorage.getItem(recipientsStorageKey(groupId));
+  } catch {
+    return null;
+  }
+}
+
+function RoundtableRouteView() {
   const { groupId } = Route.useParams();
   const state = useLhcGroupTranscript(groupId);
+  // Default recipients persist per roundtable per browser; unknown ids drop at parse time.
+  const [storedRecipients, setStoredRecipients] = useState<{ groupId: string; raw: string | null }>(
+    () => ({ groupId, raw: readStoredRecipients(groupId) }),
+  );
+  const stored =
+    storedRecipients.groupId === groupId ? storedRecipients.raw : readStoredRecipients(groupId);
+  const members = state.group?.members ?? [];
+  const checked = parseRecipients(stored, members);
+  const onCheckedChange = useCallback(
+    (memberId: string, value: boolean) => {
+      const next = new Set(parseRecipients(stored, members));
+      if (value) next.add(memberId);
+      else next.delete(memberId);
+      const raw = serializeRecipients(next);
+      try {
+        window.localStorage.setItem(recipientsStorageKey(groupId), raw);
+      } catch {
+        // private mode or quota: the choice lives for this page only
+      }
+      setStoredRecipients({ groupId, raw });
+    },
+    [groupId, members, stored],
+  );
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stickToBottom = useRef(true);
 
@@ -37,18 +73,13 @@ function GroupChatRouteView() {
     return () => observer.disconnect();
   }, [lineCount]);
 
-  const members = state.group?.members ?? [];
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground">
       <div className="flex min-h-0 flex-1 flex-col">
         <WorkspacePageHeader electron={isElectron} className="relative bg-background">
           <div className="flex min-w-0 flex-1 items-baseline gap-2 truncate">
             <h1 className="truncate text-sm font-medium">{state.group?.name ?? groupId}</h1>
-            {members.length ? (
-              <span className="truncate text-xs text-secondary-label">
-                {members.map((m) => `${m.label} (@${m.id})`).join(", ")}
-              </span>
-            ) : null}
+            {members.length ? <LhcRoundtableMemberStrip members={members} /> : null}
           </div>
         </WorkspacePageHeader>
         <div
@@ -80,12 +111,18 @@ function GroupChatRouteView() {
         {state.error && state.messages.length > 0 ? (
           <div className="px-6 py-1 text-xs text-destructive">{state.error}</div>
         ) : null}
-        <LhcGroupComposer members={members} onSend={state.send} disabled={!state.loaded} />
+        <LhcGroupComposer
+          members={members}
+          onSend={state.send}
+          disabled={!state.loaded}
+          checked={checked}
+          onCheckedChange={onCheckedChange}
+        />
       </div>
     </SidebarInset>
   );
 }
 
-export const Route = createFileRoute("/_chat/groups/$groupId")({
-  component: GroupChatRouteView,
+export const Route = createFileRoute("/_chat/roundtable/$groupId")({
+  component: RoundtableRouteView,
 });

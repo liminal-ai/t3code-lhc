@@ -127,7 +127,7 @@ apps/web/src/lhcGroups.logic.test.ts
 apps/web/src/lhcGroups.logic.ts
 apps/web/src/lhcGroups.test.ts
 apps/web/src/lhcGroups.ts
-apps/web/src/routes/_chat.groups.$groupId.tsx
+apps/web/src/routes/_chat.roundtable.$groupId.tsx
 apps/web/src/components/settings/SettingsPanels.tsx
 apps/web/src/hooks/useSettings.test.ts
 apps/web/src/hooks/useSettings.ts

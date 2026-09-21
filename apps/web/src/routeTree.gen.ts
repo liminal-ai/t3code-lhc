@@ -30,7 +30,7 @@ import { Route as SettingsArchivedRouteImport } from './routes/settings.archived
 import { Route as SettingsAppearanceRouteImport } from './routes/settings.appearance'
 import { Route as ProjectsProjectKeyRouteImport } from './routes/projects.$projectKey'
 import { Route as ChatPullRequestsRouteImport } from './routes/_chat.pull-requests'
-import { Route as ChatGroupsGroupIdRouteImport } from './routes/_chat.groups.$groupId'
+import { Route as ChatRoundtableGroupIdRouteImport } from './routes/_chat.roundtable.$groupId'
 import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
 import { Route as ChatEnvironmentIdThreadIdRouteImport } from './routes/_chat.$environmentId.$threadId'
 
@@ -139,9 +139,9 @@ const ChatPullRequestsRoute = ChatPullRequestsRouteImport.update({
   path: '/pull-requests',
   getParentRoute: () => ChatRoute,
 } as any)
-const ChatGroupsGroupIdRoute = ChatGroupsGroupIdRouteImport.update({
-  id: '/groups/$groupId',
-  path: '/groups/$groupId',
+const ChatRoundtableGroupIdRoute = ChatRoundtableGroupIdRouteImport.update({
+  id: '/roundtable/$groupId',
+  path: '/roundtable/$groupId',
   getParentRoute: () => ChatRoute,
 } as any)
 const ChatDraftDraftIdRoute = ChatDraftDraftIdRouteImport.update({
@@ -179,7 +179,7 @@ export interface FileRoutesByFullPath {
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
-  '/groups/$groupId': typeof ChatGroupsGroupIdRoute
+  '/roundtable/$groupId': typeof ChatRoundtableGroupIdRoute
 }
 export interface FileRoutesByTo {
   '/connect': typeof ConnectRoute
@@ -204,7 +204,7 @@ export interface FileRoutesByTo {
   '/': typeof ChatIndexRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
-  '/groups/$groupId': typeof ChatGroupsGroupIdRoute
+  '/roundtable/$groupId': typeof ChatRoundtableGroupIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -231,7 +231,7 @@ export interface FileRoutesById {
   '/_chat/': typeof ChatIndexRoute
   '/_chat/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/_chat/draft/$draftId': typeof ChatDraftDraftIdRoute
-  '/_chat/groups/$groupId': typeof ChatGroupsGroupIdRoute
+  '/_chat/roundtable/$groupId': typeof ChatRoundtableGroupIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -258,7 +258,7 @@ export interface FileRouteTypes {
     | '/settings/source-control'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
-    | '/groups/$groupId'
+    | '/roundtable/$groupId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/connect'
@@ -283,7 +283,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
-    | '/groups/$groupId'
+    | '/roundtable/$groupId'
   id:
     | '__root__'
     | '/_chat'
@@ -309,7 +309,7 @@ export interface FileRouteTypes {
     | '/_chat/'
     | '/_chat/$environmentId/$threadId'
     | '/_chat/draft/$draftId'
-    | '/_chat/groups/$groupId'
+    | '/_chat/roundtable/$groupId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -471,11 +471,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatPullRequestsRouteImport
       parentRoute: typeof ChatRoute
     }
-    '/_chat/groups/$groupId': {
-      id: '/_chat/groups/$groupId'
-      path: '/groups/$groupId'
-      fullPath: '/groups/$groupId'
-      preLoaderRoute: typeof ChatGroupsGroupIdRouteImport
+    '/_chat/roundtable/$groupId': {
+      id: '/_chat/roundtable/$groupId'
+      path: '/roundtable/$groupId'
+      fullPath: '/roundtable/$groupId'
+      preLoaderRoute: typeof ChatRoundtableGroupIdRouteImport
       parentRoute: typeof ChatRoute
     }
     '/_chat/draft/$draftId': {
@@ -500,7 +500,7 @@ interface ChatRouteChildren {
   ChatIndexRoute: typeof ChatIndexRoute
   ChatEnvironmentIdThreadIdRoute: typeof ChatEnvironmentIdThreadIdRoute
   ChatDraftDraftIdRoute: typeof ChatDraftDraftIdRoute
-  ChatGroupsGroupIdRoute: typeof ChatGroupsGroupIdRoute
+  ChatRoundtableGroupIdRoute: typeof ChatRoundtableGroupIdRoute
 }
 
 const ChatRouteChildren: ChatRouteChildren = {
@@ -508,7 +508,7 @@ const ChatRouteChildren: ChatRouteChildren = {
   ChatIndexRoute: ChatIndexRoute,
   ChatEnvironmentIdThreadIdRoute: ChatEnvironmentIdThreadIdRoute,
   ChatDraftDraftIdRoute: ChatDraftDraftIdRoute,
-  ChatGroupsGroupIdRoute: ChatGroupsGroupIdRoute,
+  ChatRoundtableGroupIdRoute: ChatRoundtableGroupIdRoute,
 }
 
 const ChatRouteWithChildren = ChatRoute._addFileChildren(ChatRouteChildren)

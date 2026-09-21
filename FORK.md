@@ -300,17 +300,19 @@ upstream readers of the legacy switch agree with the chosen view. Section state
 lives in client settings `lhcAgentsExpanded`, `lhcAgentsGroupByProject`,
 `lhcProjectsExpanded`.
 
-## Group chat view (fork-only)
+## Roundtable view (fork-only)
 
 A chat page per lhc-console group line (`docs/spec-group-*` briefs in the
-console repo). The console stays the source of truth; t3code proxies and
+console repo), called "Roundtable" in the UI (the console API and registry
+keep `group`). The console stays the source of truth; t3code proxies and
 renders. Files: `apps/server/src/lhcConsoleGroupsProxy.ts` (one raw route
 layer, `/api/groups/*`, registered in `server.ts` next to the device-hub
 proxy), `apps/web/src/lhcGroups.ts` (client + polling hooks),
 `lhcGroups.logic.ts` (wake rule, `@` autocomplete, merge, read markers),
 `components/LhcGroupsSection.tsx` (sidebar section under Agents, in the same
-above-slot), `components/LhcGroupChat.tsx` (transcript, composer),
-`routes/_chat.groups.$groupId.tsx` (the page; `routeTree.gen.ts` regenerated).
+above-slot), `components/LhcGroupChat.tsx` (member strip, transcript, composer),
+`routes/_chat.roundtable.$groupId.tsx` (the page; `routeTree.gen.ts`
+regenerated).
 
 The proxy authenticates the browser with the pairing session (read scope on
 GET, operate scope on POST), reads the console owner bearer from
@@ -323,14 +325,24 @@ token file 503; an unreachable console 502. No browser holds the console
 token.
 
 The page polls `since=<seq>` every 2s while open and the group detail (member
-cursors) every fifth poll or when lines arrive. Owner lines render
-right-aligned as plain text; member replies through `ChatMarkdown`; each
-member's cursor shows as a "read to here" marker. The composer's wake preview
-and `@` autocomplete follow the console's tag rule (member key with or without
-`@` as a word; `@all` / `@everyone` / `@both` wake everyone; untagged text
-wakes nobody). Enter sends, Shift+Enter breaks a line, Tab or Enter picks a
-mention while the menu is open. The Groups section hides itself when the
-proxy answers 404 (a server without it) or the console has no groups.
+cursors and activity) every fifth poll, when lines arrive, or every poll while
+a member is working. Owner lines render right-aligned as plain text; member
+replies through `ChatMarkdown`; each member's cursor shows as a "read to here"
+marker. Activity comes from the console (`members[].activity`, working while
+the member's wake job has not delivered its reply): the header strip shows a
+pulsing dot on working members (the thread view's "Working" pill colors) and
+the transcript ends with a spinner row per working member, replaced by the
+reply when it lands. The composer has one default-recipient checkbox per
+member (persisted per roundtable in `localStorage`,
+`t3code:roundtable:<id>:recipients`); checked members go up as `wake[]` on
+the POST and the console unions them with the tags. The wake preview and `@`
+autocomplete follow the console's tag rule (member key with or without `@` as
+a word; `@all` / `@everyone` / `@both` wake everyone; untagged text with no
+box checked wakes nobody). Enter sends, Shift+Enter breaks a line, Tab or
+Enter picks a mention while the menu is open. The Roundtable section hides
+itself when the proxy answers 404 (a server without it) or the console has no
+groups; its rows carry no activity dot (the list poll is 30s, so it would be
+stale).
 
 ## Default instance seed (fork-only)
 

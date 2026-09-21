@@ -1,5 +1,5 @@
-// Fork-only (LHC): client for the group-line proxy (/api/groups/*) on this
-// server. Same-origin credentialed fetch: the pairing session cookie is the
+// Fork-only (LHC): client for the roundtable (group-line) proxy (/api/groups/*)
+// on this server. Same-origin credentialed fetch: the pairing session cookie is the
 // browser's credential; the server adds the console bearer.
 import { useEffect, useRef, useState } from "react";
 import { resolvePrimaryEnvironmentHttpUrl } from "~/environments/primary";
@@ -12,7 +12,7 @@ import {
 } from "./lhcGroups.logic";
 
 export interface LhcGroupDetail extends LhcGroupSummary {
-  readonly members: ReadonlyArray<Required<LhcGroupMember>>;
+  readonly members: ReadonlyArray<LhcGroupMember & { readonly cursorSeq: number }>;
   readonly lastSeq: number;
 }
 
@@ -92,11 +92,12 @@ export function makeLhcGroupsClient(fetchFn: FetchLike = (input, init) => fetch(
         signal,
         { since: String(since) },
       ),
-    post: (groupId: string, text: string, clientId: string) =>
+    /** `wake` = default recipients; the console unions them with the tags in the text. */
+    post: (groupId: string, text: string, clientId: string, wake: ReadonlyArray<string> = []) =>
       request<LhcGroupPostResult>(fetchFn, `/api/groups/${encodeURIComponent(groupId)}/messages`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ text, id: clientId }),
+        body: JSON.stringify(wake.length ? { text, id: clientId, wake } : { text, id: clientId }),
       }),
   };
 }
@@ -147,7 +148,7 @@ export interface LhcGroupTranscriptState {
   readonly error: string | null;
   readonly loaded: boolean;
   /** Post an owner message; the transcript refreshes on the next poll (forced immediately). */
-  readonly send: (text: string) => Promise<LhcGroupPostResult>;
+  readonly send: (text: string, wake?: ReadonlyArray<string>) => Promise<LhcGroupPostResult>;
 }
 
 interface TranscriptData {
@@ -178,6 +179,7 @@ export function useLhcGroupTranscript(groupId: string): LhcGroupTranscriptState 
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | null = null;
     let detailEvery = 0;
+    let anyoneWorking = false;
     const update = (patch: Partial<TranscriptData>) =>
       setData((previous) => ({
         ...(previous.groupId === groupId ? previous : emptyTranscript(groupId)),
@@ -195,9 +197,12 @@ export function useLhcGroupTranscript(groupId: string): LhcGroupTranscriptState 
             return { ...base, messages: mergeMessages(base.messages, page.messages) };
           });
         }
-        // Cursors move on member wakes; refresh the detail every 5th poll or when lines arrived.
-        if (detailEvery % 5 === 0 || page.messages.length) {
-          update({ group: await lhcGroupsClient.detail(groupId, controller.signal) });
+        // The detail carries cursors and who is working; refresh it every poll while
+        // anyone is working (so the pending rows clear promptly), else every 5th or on new lines.
+        if (detailEvery % 5 === 0 || page.messages.length || anyoneWorking) {
+          const group = await lhcGroupsClient.detail(groupId, controller.signal);
+          anyoneWorking = group.members.some((member) => member.activity?.state === "working");
+          update({ group });
         }
         detailEvery += 1;
         update({ error: null, loaded: true });
@@ -220,11 +225,11 @@ export function useLhcGroupTranscript(groupId: string): LhcGroupTranscriptState 
     };
   }, [groupId]);
 
-  const send = async (text: string) => {
+  const send = async (text: string, wake: ReadonlyArray<string> = []) => {
     // Dedupe key for the console (web:<id>); uniqueness per page session is enough.
     sendCounter += 1;
     const clientId = `${Date.now().toString(36)}-${sendCounter.toString(36)}-${pageNonce}`;
-    const result = await lhcGroupsClient.post(groupId, text, clientId);
+    const result = await lhcGroupsClient.post(groupId, text, clientId, wake);
     pokeRef.current();
     return result;
   };
