@@ -24,6 +24,8 @@ export interface LhcGroupSummary {
   readonly channels: ReadonlyArray<string>;
   /** Slice 5 list fields; absent on a console predating them. */
   readonly working?: ReadonlyArray<string> | undefined;
+  /** Members whose latest wake failed, until their next successful reply. */
+  readonly failed?: ReadonlyArray<string> | undefined;
   readonly latestSeq?: number | undefined;
   readonly latestAt?: string | null | undefined;
 }

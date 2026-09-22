@@ -256,9 +256,21 @@ describe("resolveLhcRoundtableRowStatus", () => {
     expect(
       resolveLhcRoundtableRowStatus({ members, working: ["flint", "sable"], latestSeq: 6 }, 5),
     ).toMatchObject({ working: ["Sable", "Flint"], workingLabel: "2 working", isUnread: true });
+    expect(
+      resolveLhcRoundtableRowStatus({ members, failed: ["sable"], latestSeq: 1 }, 1),
+    ).toMatchObject({ failed: ["Sable"], failedLabel: "Sable failed", workingLabel: "" });
+    expect(resolveLhcRoundtableRowStatus({ members, failed: ["sable", "flint"] }, 0)).toMatchObject(
+      { failedLabel: "2 failed" },
+    );
+    // Working again outranks a stale failure.
+    expect(
+      resolveLhcRoundtableRowStatus({ members, failed: ["sable"], working: ["sable"] }, 0),
+    ).toMatchObject({ failed: [], failedLabel: "", workingLabel: "Sable working" });
     expect(resolveLhcRoundtableRowStatus({ members }, 0)).toMatchObject({
       working: [],
       workingLabel: "",
+      failed: [],
+      failedLabel: "",
       isUnread: false,
       latestAt: null,
     });

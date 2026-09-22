@@ -353,7 +353,9 @@ console list's `working`, `latestSeq`, `latestAt`: a pulsing Working dot with
 "Sable working" / "2 working", an unread dot + bold title while `latestSeq`
 exceeds the seen seq (`lhcRoundtableSeen.ts`, localStorage
 `t3code:roundtable:<id>:seenSeq`, written by the page once lines are shown),
-else the age of the last line. The list polls every 5s while a roundtable page
+"Sable failed" / "2 failed" in destructive color while the console list's
+`failed` names a member whose latest wake failed (cleared by that member's next
+reply; working again outranks it), else the age of the last line. The list polls every 5s while a roundtable page
 is open or any group is working, 15s otherwise.
 
 ## Default instance seed (fork-only)

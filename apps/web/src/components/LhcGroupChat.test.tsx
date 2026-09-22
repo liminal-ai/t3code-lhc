@@ -132,19 +132,25 @@ describe("roundtable page pieces", () => {
   });
 
   it("roundtable rows: working pill, unread dot + bold, resting age", () => {
-    const row = (id: string, working: string[], latestSeq: number) => ({
+    const row = (id: string, working: string[], latestSeq: number, failed: string[] = []) => ({
       id,
       name: id,
       description: "d",
       members,
       channels: [] as string[],
       working,
+      failed,
       latestSeq,
       latestAt: "2026-09-22T10:00:00.000Z",
     });
     const html = renderToStaticMarkup(
       <LhcGroupsSectionView
-        groups={[row("busy", ["sable"], 9), row("fresh", [], 4), row("quiet", [], 4)]}
+        groups={[
+          row("busy", ["sable"], 9),
+          row("fresh", [], 4),
+          row("quiet", [], 4),
+          row("broken", [], 4, ["flint"]),
+        ]}
         activeGroupId={null}
         expanded
         onToggleExpanded={() => {}}
@@ -161,6 +167,11 @@ describe("roundtable page pieces", () => {
     expect(html).not.toMatch(/lhc-group-row-quiet"[^>]*data-unread/);
     expect(html).not.toContain("lhc-group-unread-quiet");
     expect(html).not.toContain("lhc-group-working-quiet");
+    expect(html).toMatch(/lhc-group-row-broken"[^>]*data-failed="true"/);
+    expect(html).toContain('data-testid="lhc-group-failed-broken"');
+    expect(html).toContain("Flint failed");
+    expect(html).toContain("text-destructive");
+    expect(html).not.toContain("lhc-group-failed-quiet");
   });
 
   it("renders the sidebar Roundtable section with one row per group and the active row marked", () => {

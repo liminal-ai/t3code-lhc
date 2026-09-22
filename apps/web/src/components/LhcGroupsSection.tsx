@@ -11,6 +11,7 @@ import { formatRelativeTimeLabel } from "../timestampFormat";
 import { lhcRowSurfaceClassName, resolveLhcRoundtableRowStatus } from "./LhcSidebar.logic";
 import { resolveThreadRowClassName } from "./Sidebar.logic";
 import { ThreadStatusLabel } from "./ThreadStatusIndicators";
+import { CircleXIcon } from "lucide-react";
 import { WORKING_STATUS_PILL } from "./LhcGroupChat";
 import {
   SidebarGroup,
@@ -102,9 +103,10 @@ function LhcGroupRow(props: {
   const seenSeq = seenSeqOf ? seenSeqOf(group.id) : storedSeenSeq;
   const status = resolveLhcRoundtableRowStatus(group, isActive ? Number.MAX_SAFE_INTEGER : seenSeq);
   const working = status.working.length > 0;
+  const failed = status.failed.length > 0;
   const tooltip = `${group.name}: ${group.members.map((m) => m.label).join(", ")}${
     working ? ` · ${status.working.join(", ")} working` : ""
-  }`;
+  }${failed ? ` · ${status.failed.join(", ")} failed` : ""}`;
   return (
     <SidebarMenuSubItem className="w-full" data-testid={`lhc-group-${group.id}`}>
       <SidebarMenuSubButton
@@ -112,6 +114,7 @@ function LhcGroupRow(props: {
         isActive={isActive}
         data-testid={`lhc-group-row-${group.id}`}
         data-working={working ? "true" : undefined}
+        data-failed={failed ? "true" : undefined}
         data-unread={status.isUnread ? "true" : undefined}
         className={`${resolveThreadRowClassName({ isActive, isSelected: false })} ${lhcRowSurfaceClassName({ isActive, isSelected: false })}`}
         title={tooltip}
@@ -138,6 +141,14 @@ function LhcGroupRow(props: {
             >
               <ThreadStatusLabel status={WORKING_STATUS_PILL} compact />
               <span className={WORKING_STATUS_PILL.colorClass}>{status.workingLabel}</span>
+            </span>
+          ) : failed ? (
+            <span
+              className="flex shrink-0 items-center gap-1 text-[11px] text-destructive"
+              data-testid={`lhc-group-failed-${group.id}`}
+            >
+              <CircleXIcon aria-label="Failed" className="size-3 shrink-0" />
+              <span>{status.failedLabel}</span>
             </span>
           ) : (
             <span className="shrink-0 text-secondary-label text-[11px] tabular-nums">

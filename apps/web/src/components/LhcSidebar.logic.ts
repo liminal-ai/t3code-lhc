@@ -176,6 +176,7 @@ export function resolveLhcAgentRowStatus(
 export interface LhcRoundtableRowInput {
   readonly members: ReadonlyArray<{ readonly id: string; readonly label: string }>;
   readonly working?: ReadonlyArray<string> | undefined;
+  readonly failed?: ReadonlyArray<string> | undefined;
   readonly latestSeq?: number | undefined;
   readonly latestAt?: string | null | undefined;
 }
@@ -185,6 +186,10 @@ export interface LhcRoundtableRowStatus {
   readonly working: ReadonlyArray<string>;
   /** "Sable working" / "2 working" / "" when idle. */
   readonly workingLabel: string;
+  /** Labels of members whose latest wake failed (and are not working again). */
+  readonly failed: ReadonlyArray<string>;
+  /** "Sable failed" / "2 failed" / "" when none. */
+  readonly failedLabel: string;
   readonly isUnread: boolean;
   /** Stamp of the latest line for the resting-state age, null when empty. */
   readonly latestAt: string | null;
@@ -202,10 +207,22 @@ export function resolveLhcRoundtableRowStatus(
       : working.length === 1
         ? `${working[0]} working`
         : `${working.length} working`;
+  const failedIds = new Set(group.failed ?? []);
+  const failed = group.members
+    .filter((m) => failedIds.has(m.id) && !workingIds.has(m.id))
+    .map((m) => m.label);
+  const failedLabel =
+    failed.length === 0
+      ? ""
+      : failed.length === 1
+        ? `${failed[0]} failed`
+        : `${failed.length} failed`;
   const latestSeq = group.latestSeq ?? 0;
   return {
     working,
     workingLabel,
+    failed,
+    failedLabel,
     isUnread: latestSeq > seenSeq,
     latestAt: group.latestAt ?? null,
   };
