@@ -105,25 +105,38 @@ export function makeLhcGroupsClient(fetchFn: FetchLike = (input, init) => fetch(
 export type LhcGroupsClient = ReturnType<typeof makeLhcGroupsClient>;
 export const lhcGroupsClient: LhcGroupsClient = makeLhcGroupsClient();
 
-const LIST_POLL_MS = 30_000;
+/** List poll: fast while anything is working or a roundtable page is open, else relaxed. */
+const LIST_POLL_FAST_MS = 5_000;
+const LIST_POLL_MS = 15_000;
 let sendCounter = 0;
 const pageNonce =
   Date.now().toString(36).slice(-4) + performance.now().toString(36).replace(".", "").slice(-4);
 const TRANSCRIPT_POLL_MS = 2_000;
 
-/** The console's groups, polled slowly; null until the first answer, [] when none. */
-export function useLhcGroups(): {
+/**
+ * The console's groups; null until the first answer, [] when none. Polls every
+ * 5s while `fast` (a roundtable page is open) or any group reports a working
+ * member, else every 15s.
+ */
+export function useLhcGroups(fast = false): {
   groups: ReadonlyArray<LhcGroupSummary> | null;
   error: string | null;
 } {
   const [groups, setGroups] = useState<ReadonlyArray<LhcGroupSummary> | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const fastRef = useRef(fast);
+  useEffect(() => {
+    fastRef.current = fast;
+  }, [fast]);
   useEffect(() => {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let anyWorking = false;
     const tick = async () => {
       try {
-        setGroups(await lhcGroupsClient.list(controller.signal));
+        const list = await lhcGroupsClient.list(controller.signal);
+        anyWorking = list.some((group) => (group.working?.length ?? 0) > 0);
+        setGroups(list);
         setError(null);
       } catch (err) {
         if (controller.signal.aborted) return;
@@ -131,7 +144,10 @@ export function useLhcGroups(): {
         if (err instanceof LhcGroupsApiError && err.status === 404) setGroups([]);
         else setError(err instanceof Error ? err.message : String(err));
       }
-      if (!controller.signal.aborted) timer = setTimeout(() => void tick(), LIST_POLL_MS);
+      if (!controller.signal.aborted) {
+        const delay = fastRef.current || anyWorking ? LIST_POLL_FAST_MS : LIST_POLL_MS;
+        timer = setTimeout(() => void tick(), delay);
+      }
     };
     void tick();
     return () => {

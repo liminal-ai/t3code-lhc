@@ -22,6 +22,10 @@ export interface LhcGroupSummary {
   readonly description: string;
   readonly members: ReadonlyArray<LhcGroupMember>;
   readonly channels: ReadonlyArray<string>;
+  /** Slice 5 list fields; absent on a console predating them. */
+  readonly working?: ReadonlyArray<string> | undefined;
+  readonly latestSeq?: number | undefined;
+  readonly latestAt?: string | null | undefined;
 }
 
 export interface LhcGroupMessage {

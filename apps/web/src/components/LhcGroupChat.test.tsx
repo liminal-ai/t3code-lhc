@@ -131,6 +131,38 @@ describe("roundtable page pieces", () => {
     expect(html).not.toContain("lhc-group-mention-menu");
   });
 
+  it("roundtable rows: working pill, unread dot + bold, resting age", () => {
+    const row = (id: string, working: string[], latestSeq: number) => ({
+      id,
+      name: id,
+      description: "d",
+      members,
+      channels: [] as string[],
+      working,
+      latestSeq,
+      latestAt: "2026-09-22T10:00:00.000Z",
+    });
+    const html = renderToStaticMarkup(
+      <LhcGroupsSectionView
+        groups={[row("busy", ["sable"], 9), row("fresh", [], 4), row("quiet", [], 4)]}
+        activeGroupId={null}
+        expanded
+        onToggleExpanded={() => {}}
+        onSelect={() => {}}
+        seenSeqOf={(id) => (id === "quiet" ? 4 : 0)}
+      />,
+    );
+    expect(html).toMatch(/lhc-group-row-busy"[^>]*data-working="true"/);
+    expect(html).toContain('data-testid="lhc-group-working-busy"');
+    expect(html).toContain("Sable working");
+    expect(html).toContain("animate-status-pulse");
+    expect(html).toMatch(/lhc-group-row-fresh"[^>]*data-unread="true"/);
+    expect(html).toContain('data-testid="lhc-group-unread-fresh"');
+    expect(html).not.toMatch(/lhc-group-row-quiet"[^>]*data-unread/);
+    expect(html).not.toContain("lhc-group-unread-quiet");
+    expect(html).not.toContain("lhc-group-working-quiet");
+  });
+
   it("renders the sidebar Roundtable section with one row per group and the active row marked", () => {
     const html = renderToStaticMarkup(
       <LhcGroupsSectionView

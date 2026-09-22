@@ -13,6 +13,7 @@ import { SidebarInset } from "~/components/ui/sidebar";
 import { Spinner } from "~/components/ui/spinner";
 import { isElectron } from "../env";
 import { useLhcGroupTranscript } from "../lhcGroups";
+import { markRoundtableSeen } from "../lhcRoundtableSeen";
 import { parseRecipients, recipientsStorageKey, serializeRecipients } from "../lhcGroups.logic";
 
 function readStoredRecipients(groupId: string): string | null {
@@ -56,6 +57,12 @@ function RoundtableRouteView() {
   useEffect(() => {
     document.title = `${groupName} · T3 Code`;
   }, [groupName]);
+
+  // The page has shown the lines: the sidebar row's unread state clears here.
+  const shownSeq = state.messages.length ? state.messages[state.messages.length - 1]!.seq : 0;
+  useEffect(() => {
+    if (state.loaded && shownSeq > 0) markRoundtableSeen(groupId, shownSeq);
+  }, [groupId, shownSeq, state.loaded]);
 
   // Follow new lines while the reader sits at the bottom; leave them alone otherwise.
   // Markdown renders after the lines mount, so the content's size, not the line

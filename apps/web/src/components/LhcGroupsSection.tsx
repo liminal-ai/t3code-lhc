@@ -6,8 +6,12 @@ import { memo, useState } from "react";
 import { useParams, useRouter } from "@tanstack/react-router";
 import type { LhcGroupSummary } from "../lhcGroups.logic";
 import { useLhcGroups } from "../lhcGroups";
-import { lhcRowSurfaceClassName } from "./LhcSidebar.logic";
+import { useRoundtableSeenSeq } from "../lhcRoundtableSeen";
+import { formatRelativeTimeLabel } from "../timestampFormat";
+import { lhcRowSurfaceClassName, resolveLhcRoundtableRowStatus } from "./LhcSidebar.logic";
 import { resolveThreadRowClassName } from "./Sidebar.logic";
+import { ThreadStatusLabel } from "./ThreadStatusIndicators";
+import { WORKING_STATUS_PILL } from "./LhcGroupChat";
 import {
   SidebarGroup,
   SidebarMenu,
@@ -18,14 +22,14 @@ import {
 } from "./ui/sidebar";
 
 export function LhcGroupsSection() {
-  const { groups } = useLhcGroups();
-  const [expanded, setExpanded] = useState(true);
-  const router = useRouter();
-  const { isMobile, setOpenMobile } = useSidebar();
   const activeGroupId = useParams({
     strict: false,
     select: (params) => (params as { groupId?: string }).groupId ?? null,
   });
+  const { groups } = useLhcGroups(activeGroupId !== null);
+  const [expanded, setExpanded] = useState(true);
+  const router = useRouter();
+  const { isMobile, setOpenMobile } = useSidebar();
   // A stock server (no proxy) or a console with no groups: the section stays out of the way.
   if (!groups || groups.length === 0) return null;
   return (
@@ -49,6 +53,8 @@ export const LhcGroupsSectionView = memo(function LhcGroupsSectionView(props: {
   readonly expanded: boolean;
   readonly onToggleExpanded: () => void;
   readonly onSelect: (groupId: string) => void;
+  /** Injected for tests; the live section reads the persisted seen seq per group. */
+  readonly seenSeqOf?: ((groupId: string) => number) | undefined;
 }) {
   const { groups, activeGroupId, expanded, onToggleExpanded, onSelect } = props;
   return (
@@ -69,36 +75,79 @@ export const LhcGroupsSectionView = memo(function LhcGroupsSectionView(props: {
       {expanded ? (
         <SidebarMenu>
           <SidebarMenuSub className="mx-0.5 my-0 w-full translate-x-0 gap-0.5 overflow-hidden border-l-0 px-1 py-0 sm:mx-1 sm:px-1">
-            {groups.map((group) => {
-              const isActive = group.id === activeGroupId;
-              return (
-                <SidebarMenuSubItem
-                  key={group.id}
-                  className="w-full"
-                  data-testid={`lhc-group-${group.id}`}
-                >
-                  <SidebarMenuSubButton
-                    size="sm"
-                    isActive={isActive}
-                    data-testid={`lhc-group-row-${group.id}`}
-                    className={`${resolveThreadRowClassName({ isActive, isSelected: false })} ${lhcRowSurfaceClassName({ isActive, isSelected: false })}`}
-                    title={`${group.name}: ${group.members.map((m) => m.label).join(", ")}`}
-                    onClick={() => onSelect(group.id)}
-                  >
-                    <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                      <UsersIcon className="size-3.5 shrink-0 text-muted-foreground/80" />
-                      <span className="min-w-0 flex-1 truncate text-sm">{group.name}</span>
-                      <span className="shrink-0 text-secondary-label text-[11px]">
-                        {group.members.map((m) => m.label).join(" · ")}
-                      </span>
-                    </div>
-                  </SidebarMenuSubButton>
-                </SidebarMenuSubItem>
-              );
-            })}
+            {groups.map((group) => (
+              <LhcGroupRow
+                key={group.id}
+                group={group}
+                isActive={group.id === activeGroupId}
+                onSelect={onSelect}
+                seenSeqOf={props.seenSeqOf}
+              />
+            ))}
           </SidebarMenuSub>
         </SidebarMenu>
       ) : null}
     </SidebarGroup>
   );
 });
+
+function LhcGroupRow(props: {
+  readonly group: LhcGroupSummary;
+  readonly isActive: boolean;
+  readonly onSelect: (groupId: string) => void;
+  readonly seenSeqOf?: ((groupId: string) => number) | undefined;
+}) {
+  const { group, isActive, onSelect, seenSeqOf } = props;
+  const storedSeenSeq = useRoundtableSeenSeq(group.id);
+  const seenSeq = seenSeqOf ? seenSeqOf(group.id) : storedSeenSeq;
+  const status = resolveLhcRoundtableRowStatus(group, isActive ? Number.MAX_SAFE_INTEGER : seenSeq);
+  const working = status.working.length > 0;
+  const tooltip = `${group.name}: ${group.members.map((m) => m.label).join(", ")}${
+    working ? ` · ${status.working.join(", ")} working` : ""
+  }`;
+  return (
+    <SidebarMenuSubItem className="w-full" data-testid={`lhc-group-${group.id}`}>
+      <SidebarMenuSubButton
+        size="sm"
+        isActive={isActive}
+        data-testid={`lhc-group-row-${group.id}`}
+        data-working={working ? "true" : undefined}
+        data-unread={status.isUnread ? "true" : undefined}
+        className={`${resolveThreadRowClassName({ isActive, isSelected: false })} ${lhcRowSurfaceClassName({ isActive, isSelected: false })}`}
+        title={tooltip}
+        onClick={() => onSelect(group.id)}
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+          <UsersIcon className="size-3.5 shrink-0 text-muted-foreground/80" />
+          <span
+            className={`min-w-0 flex-1 truncate text-sm ${status.isUnread ? "font-medium text-foreground" : ""}`}
+          >
+            {group.name}
+          </span>
+          {status.isUnread ? (
+            <span
+              aria-hidden
+              className="size-1.5 shrink-0 rounded-full bg-primary"
+              data-testid={`lhc-group-unread-${group.id}`}
+            />
+          ) : null}
+          {working ? (
+            <span
+              className="flex shrink-0 items-center gap-1 text-[11px]"
+              data-testid={`lhc-group-working-${group.id}`}
+            >
+              <ThreadStatusLabel status={WORKING_STATUS_PILL} compact />
+              <span className={WORKING_STATUS_PILL.colorClass}>{status.workingLabel}</span>
+            </span>
+          ) : (
+            <span className="shrink-0 text-secondary-label text-[11px] tabular-nums">
+              {status.latestAt
+                ? formatRelativeTimeLabel(status.latestAt)
+                : group.members.map((m) => m.label).join(" · ")}
+            </span>
+          )}
+        </div>
+      </SidebarMenuSubButton>
+    </SidebarMenuSubItem>
+  );
+}

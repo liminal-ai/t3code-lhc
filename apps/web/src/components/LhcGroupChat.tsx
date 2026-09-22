@@ -19,15 +19,23 @@ import {
   type MentionQuery,
 } from "../lhcGroups.logic";
 import { formatRelativeTimeLabel } from "../timestampFormat";
+import type { ThreadStatusPill } from "./Sidebar.logic";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import { Spinner } from "./ui/spinner";
 import { Textarea } from "./ui/textarea";
 
-// Same colors and pulse as the thread view's "Working" status pill (Sidebar.logic).
-const WORKING_TEXT_CLASS = "text-sky-600 dark:text-sky-300/80";
-const WORKING_DOT_CLASS = "bg-sky-500 dark:bg-sky-300/80 animate-status-pulse";
+// The thread view's "Working" pill (Sidebar.logic resolveThreadStatusPill for a running session),
+// as a constant so roundtable rows and the member strip render through upstream's ThreadStatusLabel.
+export const WORKING_STATUS_PILL: ThreadStatusPill = {
+  label: "Working",
+  colorClass: "text-sky-600 dark:text-sky-300/80",
+  dotClass: "bg-sky-500 dark:bg-sky-300/80",
+  pulse: true,
+};
+const WORKING_TEXT_CLASS = WORKING_STATUS_PILL.colorClass;
+const WORKING_DOT_CLASS = `${WORKING_STATUS_PILL.dotClass} animate-status-pulse`;
 
 /** Header strip: every member with a live dot while the console says it is working. */
 export function LhcRoundtableMemberStrip(props: {

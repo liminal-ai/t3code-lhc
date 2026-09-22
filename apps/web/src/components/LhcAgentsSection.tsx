@@ -2,7 +2,7 @@
 // Projects tree. Pinned, non-archived threads are agents, ordered by last-turn
 // activity; flat or grouped by project (header context menu). Own rows, own
 // context menu, own collapse keys. Row actions reuse the shared thread hooks.
-import { ArchiveIcon, ChevronRightIcon, PinOffIcon } from "lucide-react";
+import { ArchiveIcon, CheckIcon, ChevronRightIcon, CircleXIcon, PinOffIcon } from "lucide-react";
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type ScopedThreadRef, type ThreadId } from "@t3tools/contracts";
 import {
@@ -50,12 +50,13 @@ import {
   lastTurnActivityStamp,
   lhcRowSurfaceClassName,
   orderAgentProjects,
+  resolveLhcAgentRowStatus,
   sortThreadsByLastTurn,
 } from "./LhcSidebar.logic";
+import { ThreadStatusLabel } from "./ThreadStatusIndicators";
 import { ProjectFavicon } from "./ProjectFavicon";
 import { isMacPlatform } from "../lib/utils";
 import {
-  hasUnseenCompletion,
   archiveSelectedThreadEntries,
   buildMultiSelectThreadContextMenuItems,
   deleteSelectedThreadEntries,
@@ -572,14 +573,15 @@ const LhcAgentRow = memo(function LhcAgentRow(props: {
   const stopPointer = useCallback((event: React.PointerEvent) => event.stopPropagation(), []);
   const rowRender = useMemo(() => <div role="button" tabIndex={0} />, []);
   const ageStamp = lastTurnActivityStamp(thread);
-  const isRunning = thread.session?.status === "running" && thread.session.activeTurnId != null;
-  const statusLabel = isRunning ? "Running" : formatRelativeTimeLabel(ageStamp);
-  // F4: "finished since you last looked", Theo's rule (never-visited counts as read); a running
-  // row never lights up. Cleared by upstream's markThreadVisited when the thread is opened.
+  // F4 / slice 5: upstream's status pill (Working pulse, Connecting, approvals, unseen Completed)
+  // and, once a settled turn has been looked at, its end state with the age. Never-visited counts
+  // as read (Theo's rule); cleared by upstream's markThreadVisited when the thread is opened.
   const lastVisitedAt = useUiStateStore(
     (state) => state.threadLastVisitedAtById[threadKey] ?? undefined,
   );
-  const isUnread = !isRunning && hasUnseenCompletion({ ...thread, lastVisitedAt });
+  const rowStatus = resolveLhcAgentRowStatus(thread, lastVisitedAt);
+  const isUnread = rowStatus.isUnread;
+  const ageLabel = formatRelativeTimeLabel(ageStamp);
   const hoverActionWrapClass =
     "pointer-events-none absolute top-1/2 -translate-y-1/2 opacity-0 transition-opacity duration-150 max-sm:pointer-events-auto max-sm:opacity-100 group-hover/menu-sub-item:pointer-events-auto group-hover/menu-sub-item:opacity-100 group-focus-within/menu-sub-item:pointer-events-auto group-focus-within/menu-sub-item:opacity-100";
 
@@ -651,10 +653,32 @@ const LhcAgentRow = memo(function LhcAgentRow(props: {
             </Tooltip>
           )}
           {isUnread ? (
-            <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-primary" />
+            <span
+              aria-hidden
+              className="size-1.5 shrink-0 rounded-full bg-primary"
+              data-testid={`lhc-agent-unread-${thread.id}`}
+            />
           ) : null}
-          <span className="shrink-0 text-secondary-label text-[11px] tabular-nums max-sm:pr-11 group-hover/menu-sub-item:opacity-0 group-focus-within/menu-sub-item:opacity-0">
-            {statusLabel}
+          <span
+            className="flex shrink-0 items-center gap-1 text-secondary-label text-[11px] tabular-nums max-sm:pr-11 group-hover/menu-sub-item:opacity-0 group-focus-within/menu-sub-item:opacity-0"
+            data-testid={`lhc-agent-status-${thread.id}`}
+            data-status={rowStatus.pill?.label ?? rowStatus.terminal ?? "none"}
+          >
+            {rowStatus.pill ? (
+              <ThreadStatusLabel status={rowStatus.pill} />
+            ) : rowStatus.terminal === "failed" ? (
+              <>
+                <CircleXIcon aria-label="Failed" className="size-3 shrink-0 text-destructive" />
+                <span className="text-destructive">{ageLabel}</span>
+              </>
+            ) : rowStatus.terminal === "completed" ? (
+              <>
+                <CheckIcon aria-label="Completed" className="size-3 shrink-0" />
+                <span>{ageLabel}</span>
+              </>
+            ) : (
+              <span>{ageLabel}</span>
+            )}
           </span>
         </div>
         <div className={`${hoverActionWrapClass} right-6`}>

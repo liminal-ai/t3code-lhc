@@ -341,8 +341,20 @@ a word; `@all` / `@everyone` / `@both` wake everyone; untagged text with no
 box checked wakes nobody). Enter sends, Shift+Enter breaks a line, Tab or
 Enter picks a mention while the menu is open. The Roundtable section hides
 itself when the proxy answers 404 (a server without it) or the console has no
-groups; its rows carry no activity dot (the list poll is 30s, so it would be
-stale).
+groups.
+
+Row activity (slice 5): every Agents and Roundtable row answers "in progress /
+new since I looked / finished". Agents rows render upstream's status pill
+(`resolveThreadStatusPill` + `ThreadStatusLabel`, imported) and, once a settled
+turn has been seen, its end state from `latestTurn.state` (`CircleX` failed in
+destructive color, check for completed) with the relative age
+(`resolveLhcAgentRowStatus` in `LhcSidebar.logic.ts`). Roundtable rows read the
+console list's `working`, `latestSeq`, `latestAt`: a pulsing Working dot with
+"Sable working" / "2 working", an unread dot + bold title while `latestSeq`
+exceeds the seen seq (`lhcRoundtableSeen.ts`, localStorage
+`t3code:roundtable:<id>:seenSeq`, written by the page once lines are shown),
+else the age of the last line. The list polls every 5s while a roundtable page
+is open or any group is working, 15s otherwise.
 
 ## Default instance seed (fork-only)
 

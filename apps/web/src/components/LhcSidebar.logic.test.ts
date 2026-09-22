@@ -3,6 +3,8 @@ import {
   isLhcAgent,
   lastTurnActivityMs,
   orderAgentProjects,
+  resolveLhcAgentRowStatus,
+  resolveLhcRoundtableRowStatus,
   sortThreadsByLastTurn,
 } from "./LhcSidebar.logic";
 
@@ -129,5 +131,139 @@ describe("isLhcAgent / orderAgentProjects", () => {
     expect(orderAgentProjects(projects, agents, (t) => t.project).map((p) => p.projectKey)).toEqual(
       ["p3", "p1"],
     );
+  });
+});
+
+describe("resolveLhcAgentRowStatus (slice 5: in progress / new / finished)", () => {
+  const base = {
+    hasActionableProposedPlan: false,
+    hasPendingApprovals: false,
+    hasPendingUserInput: false,
+    interactionMode: "default" as const,
+    backgroundLiveness: null,
+  };
+  const turn = (
+    state: "running" | "completed" | "error" | "interrupted",
+    completedAt: string | null,
+  ) =>
+    ({
+      turnId: "t1",
+      state,
+      requestedAt: "2026-09-22T10:00:00.000Z",
+      startedAt: "2026-09-22T10:00:01.000Z",
+      completedAt,
+      assistantMessageId: null,
+    }) as never;
+  const session = (status: "running" | "ready" | "error" | "stopped") =>
+    ({ status, activeTurnId: status === "running" ? "t1" : null }) as never;
+
+  it("in progress: upstream Working pill with pulse, never unread", () => {
+    const status = resolveLhcAgentRowStatus(
+      { ...base, latestTurn: turn("running", null), session: session("running") },
+      "2026-09-01T00:00:00.000Z",
+    );
+    expect(status.pill?.label).toBe("Working");
+    expect(status.pill?.pulse).toBe(true);
+    expect(status.isRunning).toBe(true);
+    expect(status.isUnread).toBe(false);
+    expect(status.terminal).toBeNull();
+  });
+
+  it("new since last look: Completed pill + unread when the turn ended after the last visit", () => {
+    const thread = {
+      ...base,
+      latestTurn: turn("completed", "2026-09-22T10:05:00.000Z"),
+      session: session("ready"),
+    };
+    const unseen = resolveLhcAgentRowStatus(thread, "2026-09-22T10:00:00.000Z");
+    expect(unseen.pill?.label).toBe("Completed");
+    expect(unseen.isUnread).toBe(true);
+    // Never visited counts as read (Theo's rule): no pill, terminal state instead.
+    const never = resolveLhcAgentRowStatus(thread, undefined);
+    expect(never.pill).toBeNull();
+    expect(never.isUnread).toBe(false);
+    expect(never.terminal).toBe("completed");
+  });
+
+  it("finished / failed: terminal state once the settled turn has been seen", () => {
+    const seen = "2026-09-22T11:00:00.000Z";
+    expect(
+      resolveLhcAgentRowStatus(
+        {
+          ...base,
+          latestTurn: turn("completed", "2026-09-22T10:05:00.000Z"),
+          session: session("ready"),
+        },
+        seen,
+      ),
+    ).toMatchObject({ pill: null, terminal: "completed", isUnread: false });
+    expect(
+      resolveLhcAgentRowStatus(
+        {
+          ...base,
+          latestTurn: turn("error", "2026-09-22T10:05:00.000Z"),
+          session: session("error"),
+        },
+        seen,
+      ),
+    ).toMatchObject({ pill: null, terminal: "failed" });
+    expect(
+      resolveLhcAgentRowStatus(
+        {
+          ...base,
+          latestTurn: turn("interrupted", "2026-09-22T10:05:00.000Z"),
+          session: session("stopped"),
+        },
+        seen,
+      ),
+    ).toMatchObject({ pill: null, terminal: "interrupted" });
+    expect(
+      resolveLhcAgentRowStatus({ ...base, latestTurn: null, session: session("stopped") }, seen),
+    ).toMatchObject({ pill: null, terminal: null });
+  });
+
+  it("attention states from upstream outrank everything", () => {
+    const status = resolveLhcAgentRowStatus(
+      {
+        ...base,
+        hasPendingApprovals: true,
+        latestTurn: turn("running", null),
+        session: session("running"),
+      },
+      undefined,
+    );
+    expect(status.pill?.label).toBe("Pending Approval");
+  });
+});
+
+describe("resolveLhcRoundtableRowStatus", () => {
+  const members = [
+    { id: "sable", label: "Sable" },
+    { id: "flint", label: "Flint" },
+  ];
+  it("working label names one member, counts more; unread compares latestSeq to the seen seq", () => {
+    expect(
+      resolveLhcRoundtableRowStatus(
+        { members, working: ["flint"], latestSeq: 5, latestAt: "t" },
+        5,
+      ),
+    ).toMatchObject({
+      working: ["Flint"],
+      workingLabel: "Flint working",
+      isUnread: false,
+      latestAt: "t",
+    });
+    expect(
+      resolveLhcRoundtableRowStatus({ members, working: ["flint", "sable"], latestSeq: 6 }, 5),
+    ).toMatchObject({ working: ["Sable", "Flint"], workingLabel: "2 working", isUnread: true });
+    expect(resolveLhcRoundtableRowStatus({ members }, 0)).toMatchObject({
+      working: [],
+      workingLabel: "",
+      isUnread: false,
+      latestAt: null,
+    });
+  });
+  it("ignores unknown working ids from a stale console", () => {
+    expect(resolveLhcRoundtableRowStatus({ members, working: ["reed"] }, 0).working).toEqual([]);
   });
 });

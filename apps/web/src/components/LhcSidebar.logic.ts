@@ -1,6 +1,12 @@
 // Fork-only helpers for LhcSidebar.tsx (copy of LegacySidebar.tsx): the
 // last-turn sort key, the Agents partition/grouping, and row surfaces.
 import { toSortableTimestamp } from "@t3tools/client-runtime/state/thread-sort";
+import type { SidebarThreadSummary } from "../types";
+import {
+  hasUnseenCompletion,
+  resolveThreadStatusPill,
+  type ThreadStatusPill,
+} from "./Sidebar.logic";
 
 export interface LhcSortableThread {
   readonly createdAt: string;
@@ -117,4 +123,90 @@ export function lhcRowSurfaceClassName(input: {
   if (input.isSelected)
     return "bg-foreground/7 ring-1 ring-inset ring-foreground/10 hover:bg-foreground/8";
   return "hover:bg-foreground/6";
+}
+
+// ── Row activity (slice 5) ─────────────────────────────────────────────────
+// Three questions per row: in progress, new since I last looked, finished/failed.
+// Agents rows use upstream's status pill as-is; when it is null (turn settled
+// and already seen) the terminal state of the latest turn is shown instead.
+
+export type LhcTerminalKind = "completed" | "failed" | "interrupted";
+
+export interface LhcAgentRowStatus {
+  /** Upstream pill (Working, Connecting, Pending Approval, Awaiting Input, Completed…). */
+  readonly pill: ThreadStatusPill | null;
+  /** Shown when no pill applies: the latest turn's end state, or null for a fresh thread. */
+  readonly terminal: LhcTerminalKind | null;
+  /** Title bolding + dot: a completion the user has not looked at. */
+  readonly isUnread: boolean;
+  readonly isRunning: boolean;
+}
+
+type LhcAgentRowInput = Pick<
+  SidebarThreadSummary,
+  | "hasActionableProposedPlan"
+  | "hasPendingApprovals"
+  | "hasPendingUserInput"
+  | "interactionMode"
+  | "latestTurn"
+  | "session"
+  | "backgroundLiveness"
+>;
+
+export function resolveLhcAgentRowStatus(
+  thread: LhcAgentRowInput,
+  lastVisitedAt: string | undefined,
+): LhcAgentRowStatus {
+  const withVisit = { ...thread, lastVisitedAt };
+  const pill = resolveThreadStatusPill({ thread: withVisit });
+  const isRunning = thread.session?.status === "running" || thread.session?.status === "starting";
+  const isUnread = !isRunning && hasUnseenCompletion(withVisit);
+  let terminal: LhcTerminalKind | null = null;
+  if (!pill && thread.latestTurn) {
+    const state = thread.latestTurn.state;
+    if (state === "error" || thread.session?.status === "error") terminal = "failed";
+    else if (state === "interrupted") terminal = "interrupted";
+    else if (state === "completed") terminal = "completed";
+  } else if (!pill && thread.session?.status === "error") {
+    terminal = "failed";
+  }
+  return { pill, terminal, isUnread, isRunning };
+}
+
+export interface LhcRoundtableRowInput {
+  readonly members: ReadonlyArray<{ readonly id: string; readonly label: string }>;
+  readonly working?: ReadonlyArray<string> | undefined;
+  readonly latestSeq?: number | undefined;
+  readonly latestAt?: string | null | undefined;
+}
+
+export interface LhcRoundtableRowStatus {
+  /** Labels of members working on a reply, in member order. */
+  readonly working: ReadonlyArray<string>;
+  /** "Sable working" / "2 working" / "" when idle. */
+  readonly workingLabel: string;
+  readonly isUnread: boolean;
+  /** Stamp of the latest line for the resting-state age, null when empty. */
+  readonly latestAt: string | null;
+}
+
+export function resolveLhcRoundtableRowStatus(
+  group: LhcRoundtableRowInput,
+  seenSeq: number,
+): LhcRoundtableRowStatus {
+  const workingIds = new Set(group.working ?? []);
+  const working = group.members.filter((m) => workingIds.has(m.id)).map((m) => m.label);
+  const workingLabel =
+    working.length === 0
+      ? ""
+      : working.length === 1
+        ? `${working[0]} working`
+        : `${working.length} working`;
+  const latestSeq = group.latestSeq ?? 0;
+  return {
+    working,
+    workingLabel,
+    isUnread: latestSeq > seenSeq,
+    latestAt: group.latestAt ?? null,
+  };
 }
