@@ -4,6 +4,11 @@
 // owner bearer, read from ~/.lhc-console/relay-token per request. The console
 // stays the source of truth: nothing here knows what a group is beyond the
 // four routes it forwards. Precedent: device/DeviceHubProxy.ts.
+//
+// Roundtable is alpha and gated by the fork-only `roundtableEnabled` server
+// setting (default off). The setting is read from the live settings service on
+// every request, so toggling it takes effect without a restart; while off every
+// /api/groups* request answers 404 before auth and without touching the console.
 import * as NodeOS from "node:os";
 import {
   AuthOrchestrationReadScope,
@@ -22,6 +27,7 @@ import {
 } from "effect/unstable/http";
 
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
+import { ServerSettingsService } from "./serverSettings.ts";
 import {
   failEnvironmentAuthInvalid,
   failEnvironmentInternal,
@@ -80,7 +86,19 @@ const authenticate = (requiredScope: AuthEnvironmentScope) =>
     }
   });
 
+/** Live read of the Roundtable gate; an unreadable settings file reads as off. */
+const roundtableEnabled = Effect.gen(function* () {
+  const settings = yield* ServerSettingsService;
+  return yield* settings.getSettings.pipe(
+    Effect.map((current) => current.roundtableEnabled),
+    Effect.catch(() => Effect.succeed(false)),
+  );
+});
+
 const handler = Effect.gen(function* () {
+  if (!(yield* roundtableEnabled)) {
+    return HttpServerResponse.text("Not Found", { status: 404 });
+  }
   const request = yield* HttpServerRequest.HttpServerRequest;
   const url = HttpServerRequest.toURL(request);
   if (Option.isNone(url)) {

@@ -411,6 +411,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/general",
     searchTerms: ["threads projects lhc layout view agents tree flat list legacy"],
   },
+  // Fork-only: Roundtable (alpha), off by default.
+  {
+    id: "roundtable",
+    title: "Roundtable (alpha)",
+    to: "/settings/general",
+    searchTerms: ["lhc console group chat groups sidebar alpha"],
+    scope: "environment-defaults",
+  },
   {
     id: "keybindings",
     title: "Keybindings",

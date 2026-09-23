@@ -1,11 +1,21 @@
 // Fork-only (LHC): the Roundtable section of the LHC sidebar. Lists the console's
 // group lines (proxied by this server); selecting one opens the group chat
 // page. Collapse is component state: no client setting, no upstream touch.
+// Roundtable is alpha: the section (and its list poll) only mounts while the
+// primary server's `roundtableEnabled` setting is on.
+import { useAtomValue } from "@effect/atom-react";
 import { ChevronRightIcon, UsersIcon } from "lucide-react";
 import { memo, useState } from "react";
 import { useParams, useRouter } from "@tanstack/react-router";
-import type { LhcGroupSummary } from "../lhcGroups.logic";
+import {
+  resolveRoundtableGate,
+  shouldShowRoundtableSection,
+  type LhcGroupSummary,
+  type RoundtableGate,
+} from "../lhcGroups.logic";
 import { useLhcGroups } from "../lhcGroups";
+import { usePrimarySettingsAvailable } from "../hooks/useSettings";
+import { primaryServerConfigAtom } from "../state/server";
 import { useRoundtableSeenSeq } from "../lhcRoundtableSeen";
 import { formatRelativeTimeLabel } from "../timestampFormat";
 import { lhcRowSurfaceClassName, resolveLhcRoundtableRowStatus } from "./LhcSidebar.logic";
@@ -22,7 +32,22 @@ import {
   useSidebar,
 } from "./ui/sidebar";
 
+/**
+ * Live Roundtable gate from the primary server's settings. Settings changes
+ * are pushed to the client, so toggling re-renders here with no reload.
+ */
+export function useRoundtableGate(): RoundtableGate {
+  const primarySettingsAvailable = usePrimarySettingsAvailable();
+  const settings = useAtomValue(primaryServerConfigAtom)?.settings ?? null;
+  return resolveRoundtableGate({ primarySettingsAvailable, settings });
+}
+
 export function LhcGroupsSection() {
+  // Off (the default) or not yet known: nothing mounts, so nothing polls.
+  return shouldShowRoundtableSection(useRoundtableGate()) ? <LhcGroupsSectionLive /> : null;
+}
+
+function LhcGroupsSectionLive() {
   const activeGroupId = useParams({
     strict: false,
     select: (params) => (params as { groupId?: string }).groupId ?? null,

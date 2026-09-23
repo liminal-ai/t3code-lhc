@@ -1108,6 +1108,10 @@ export const ServerSettings = Schema.Struct({
    * whatever mode they have; nothing is rejected server-side.
    */
   hideFullAccess: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  // Fork-only: Roundtable (alpha) group chat, which requires lhc-console. Off
+  // hides the sidebar section, redirects /roundtable/*, and 404s /api/groups*.
+  // See FORK.md "Roundtable (alpha)".
+  roundtableEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   enableAgentBrowserAccess: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   projectAgentBrowserAccessOverrides: Schema.Record(ProjectId, Schema.Boolean).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
@@ -1450,6 +1454,7 @@ export const ServerSettingsPatch = Schema.Struct({
   enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
   continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
   hideFullAccess: Schema.optionalKey(Schema.Boolean),
+  roundtableEnabled: Schema.optionalKey(Schema.Boolean), // Fork-only
   enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
   projectAgentBrowserAccessOverrides: Schema.optionalKey(
     Schema.Record(ProjectId, Schema.NullOr(Schema.Boolean)),

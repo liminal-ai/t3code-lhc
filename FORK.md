@@ -301,7 +301,19 @@ upstream readers of the legacy switch agree with the chosen view. Section state
 lives in client settings `lhcAgentsExpanded`, `lhcAgentsGroupByProject`,
 `lhcProjectsExpanded`.
 
-## Roundtable view (fork-only)
+## Roundtable view (fork-only, alpha)
+
+Roundtable is an alpha, off by default, and requires lhc-console. It is gated
+by the fork-only server setting `roundtableEnabled` (default `false`;
+**Settings → General → Organization → Roundtable (alpha)**, "Requires
+lhc-console."). Off: the LHC sidebar has no Roundtable section and does not
+poll the group list, `/roundtable/*` redirects to `/`, and the server's
+`/api/groups*` proxy answers 404 for every request (before auth, without
+touching the console). The proxy reads the setting from the live settings
+service on each request and the web reads it from the pushed primary server
+config, so toggling takes effect without a restart or reload. On: everything
+below. Gate helpers: `resolveRoundtableGate` and friends in
+`lhcGroups.logic.ts`, `useRoundtableGate` in `LhcGroupsSection.tsx`.
 
 A chat page per lhc-console group line (`docs/spec-group-*` briefs in the
 console repo), called "Roundtable" in the UI (the console API and registry

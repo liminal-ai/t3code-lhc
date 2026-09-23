@@ -10,6 +10,9 @@ import {
   serializeRecipients,
   workingMembers,
   readMarkersAt,
+  resolveRoundtableGate,
+  shouldRedirectRoundtableRoute,
+  shouldShowRoundtableSection,
   wakePreviewLabel,
   type LhcGroupMessage,
 } from "./lhcGroups.logic";
@@ -122,5 +125,45 @@ describe("transcript merge and markers", () => {
     expect(readMarkersAt(members, 5).map((m) => m.id)).toEqual(["flint"]);
     expect(readMarkersAt(members, 6)).toEqual([]);
     expect(readMarkersAt([{ id: "x", label: "X", cursorSeq: 0 }], 0)).toEqual([]);
+  });
+});
+
+describe("roundtable gate (roundtableEnabled, alpha)", () => {
+  it("is off by default: no sidebar section, the route redirects home", () => {
+    const gate = resolveRoundtableGate({
+      primarySettingsAvailable: true,
+      settings: { roundtableEnabled: false },
+    });
+    expect(gate).toBe("disabled");
+    expect(shouldShowRoundtableSection(gate)).toBe(false);
+    expect(shouldRedirectRoundtableRoute(gate)).toBe(true);
+  });
+
+  it("is on when the setting is on: section shown, route stays", () => {
+    const gate = resolveRoundtableGate({
+      primarySettingsAvailable: true,
+      settings: { roundtableEnabled: true },
+    });
+    expect(gate).toBe("enabled");
+    expect(shouldShowRoundtableSection(gate)).toBe(true);
+    expect(shouldRedirectRoundtableRoute(gate)).toBe(false);
+  });
+
+  it("waits for settings to hydrate before either showing or redirecting", () => {
+    for (const settings of [null, undefined]) {
+      const gate = resolveRoundtableGate({ primarySettingsAvailable: true, settings });
+      expect(gate).toBe("pending");
+      expect(shouldShowRoundtableSection(gate)).toBe(false);
+      expect(shouldRedirectRoundtableRoute(gate)).toBe(false);
+    }
+  });
+
+  it("is off without a primary server to proxy the console", () => {
+    const gate = resolveRoundtableGate({
+      primarySettingsAvailable: false,
+      settings: { roundtableEnabled: true },
+    });
+    expect(gate).toBe("disabled");
+    expect(shouldRedirectRoundtableRoute(gate)).toBe(true);
   });
 });

@@ -2208,6 +2208,31 @@ export function GeneralSettingsPanel() {
             </Select>
           }
         />
+        {/* Fork-only: Roundtable (alpha) group chat in the LHC sidebar; off by default. */}
+        <SettingsRow
+          serverScoped
+          settingKeys={["roundtableEnabled"]}
+          {...searchableSetting("roundtable")}
+          description="Requires lhc-console."
+          resetAction={
+            settings.roundtableEnabled !== DEFAULT_UNIFIED_SETTINGS.roundtableEnabled ? (
+              <SettingResetButton
+                label="Roundtable"
+                onClick={() =>
+                  updateSettings({ roundtableEnabled: DEFAULT_UNIFIED_SETTINGS.roundtableEnabled })
+                }
+              />
+            ) : null
+          }
+          control={
+            <ScopedSwitch
+              settingKeys={["roundtableEnabled"]}
+              checked={settings.roundtableEnabled}
+              onCheckedChange={(checked) => updateSettings({ roundtableEnabled: Boolean(checked) })}
+              aria-label="Roundtable (alpha)"
+            />
+          }
+        />
         <SettingsRow
           {...searchableSetting("project-grouping")}
           description="Combine matching repositories across environments."

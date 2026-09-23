@@ -167,3 +167,30 @@ export function readMarkersAt(
 ): ReadonlyArray<LhcGroupMember> {
   return members.filter((m) => m.cursorSeq === seq && seq > 0);
 }
+
+/**
+ * Roundtable is alpha behind the primary server's `roundtableEnabled` setting.
+ * `pending` until that server's config has arrived (a cold load of a
+ * roundtable URL must not bounce home before settings hydrate); `disabled`
+ * when there is no primary server to proxy the console at all.
+ */
+export type RoundtableGate = "pending" | "enabled" | "disabled";
+
+export function resolveRoundtableGate(input: {
+  readonly primarySettingsAvailable: boolean;
+  readonly settings: { readonly roundtableEnabled: boolean } | null | undefined;
+}): RoundtableGate {
+  if (!input.primarySettingsAvailable) return "disabled";
+  if (!input.settings) return "pending";
+  return input.settings.roundtableEnabled ? "enabled" : "disabled";
+}
+
+/** The sidebar section (and its group-list poll) mounts only when Roundtable is on. */
+export function shouldShowRoundtableSection(gate: RoundtableGate): boolean {
+  return gate === "enabled";
+}
+
+/** A /roundtable/* page goes home once the setting is known to be off. */
+export function shouldRedirectRoundtableRoute(gate: RoundtableGate): boolean {
+  return gate === "disabled";
+}
