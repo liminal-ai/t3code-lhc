@@ -1,6 +1,7 @@
 // Fork-only (LHC): the roundtable page. Same transcript and router as the
 // group's iMessage line, read through this server's console proxy.
-import { createFileRoute } from "@tanstack/react-router";
+// Alpha: while the `roundtableEnabled` server setting is off the page redirects home.
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ChatMarkdown from "~/components/ChatMarkdown";
 import {
@@ -14,7 +15,13 @@ import { Spinner } from "~/components/ui/spinner";
 import { isElectron } from "../env";
 import { useLhcGroupTranscript } from "../lhcGroups";
 import { markRoundtableSeen } from "../lhcRoundtableSeen";
-import { parseRecipients, recipientsStorageKey, serializeRecipients } from "../lhcGroups.logic";
+import {
+  parseRecipients,
+  recipientsStorageKey,
+  serializeRecipients,
+  shouldRedirectRoundtableRoute,
+} from "../lhcGroups.logic";
+import { useRoundtableGate } from "~/components/LhcGroupsSection";
 
 function readStoredRecipients(groupId: string): string | null {
   try {
@@ -130,6 +137,17 @@ function RoundtableRouteView() {
   );
 }
 
+/** Gate first, so a disabled Roundtable never starts the transcript poll. */
+function RoundtableRoute() {
+  const gate = useRoundtableGate();
+  const navigate = useNavigate();
+  const redirectHome = shouldRedirectRoundtableRoute(gate);
+  useEffect(() => {
+    if (redirectHome) void navigate({ to: "/", replace: true });
+  }, [navigate, redirectHome]);
+  return gate === "enabled" ? <RoundtableRouteView /> : null;
+}
+
 export const Route = createFileRoute("/_chat/roundtable/$groupId")({
-  component: RoundtableRouteView,
+  component: RoundtableRoute,
 });

@@ -7,6 +7,7 @@ import {
   AuthOrchestrationReadScope,
   AuthOrchestrationOperateScope,
   AuthSessionId,
+  DEFAULT_SERVER_SETTINGS,
   type AuthEnvironmentScope,
 } from "@t3tools/contracts";
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
@@ -16,6 +17,7 @@ import * as Stream from "effect/Stream";
 import { HttpClient, HttpClientResponse, HttpRouter } from "effect/unstable/http";
 import { EnvironmentAuth, ServerAuthMissingCredentialError } from "./auth/EnvironmentAuth.ts";
 import { lhcConsoleGroupsProxyRouteLayer, resolveConsoleTarget } from "./lhcConsoleGroupsProxy.ts";
+import { ServerSettingsService } from "./serverSettings.ts";
 
 const disposers: Array<() => Promise<void>> = [];
 let tokenFile: string;
@@ -43,6 +45,8 @@ interface Seen {
 const fixture = (
   scopes: ReadonlyArray<AuthEnvironmentScope> | "unauthenticated",
   upstream: { status: number; body: string } | "down" = { status: 200, body: "[]" },
+  // Mutable so a test can flip the setting mid-fixture, as a settings save would.
+  roundtable: { enabled: boolean } = { enabled: true },
 ) => {
   const seen: Seen[] = [];
   const client = HttpClient.make((request, _url, _signal) =>
@@ -85,9 +89,16 @@ const fixture = (
             scopes,
           }),
   } as unknown as EnvironmentAuth["Service"]);
+  const settings = Layer.succeed(ServerSettingsService, {
+    getSettings: Effect.sync(() => ({
+      ...DEFAULT_SERVER_SETTINGS,
+      roundtableEnabled: roundtable.enabled,
+    })),
+  } as unknown as ServerSettingsService["Service"]);
   const { handler, dispose } = HttpRouter.toWebHandler(
     lhcConsoleGroupsProxyRouteLayer.pipe(
       Layer.provideMerge(auth),
+      Layer.provideMerge(settings),
       Layer.provideMerge(Layer.succeed(HttpClient.HttpClient, client)),
       Layer.provideMerge(NodeFileSystem.layer),
     ),
@@ -104,6 +115,39 @@ describe("lhc console groups proxy", () => {
       tokenFile: expect.stringMatching(/\.lhc-console\/relay-token$/),
     });
     expect(resolveConsoleTarget({ LHC_CONSOLE_URL: "http://x:1/" }).origin).toBe("http://x:1");
+  });
+
+  it("answers 404 for every group route while Roundtable is off, before auth or the console", async () => {
+    const off = fixture([AuthOrchestrationOperateScope], undefined, { enabled: false });
+    expect((await off.handler(new Request("http://t3.test/api/groups"))).status).toBe(404);
+    expect((await off.handler(new Request("http://t3.test/api/groups/g"))).status).toBe(404);
+    expect(
+      (
+        await off.handler(
+          new Request("http://t3.test/api/groups/g/messages", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: '{"text":"hi","id":"c1"}',
+          }),
+        )
+      ).status,
+    ).toBe(404);
+    expect(off.seen).toEqual([]);
+
+    const anonymous = fixture("unauthenticated", undefined, { enabled: false });
+    expect((await anonymous.handler(new Request("http://t3.test/api/groups"))).status).toBe(404);
+  });
+
+  it("reads the setting per request, so toggling needs no restart", async () => {
+    const roundtable = { enabled: false };
+    const { handler, seen } = fixture([AuthOrchestrationReadScope], undefined, roundtable);
+    expect((await handler(new Request("http://t3.test/api/groups"))).status).toBe(404);
+    roundtable.enabled = true;
+    expect((await handler(new Request("http://t3.test/api/groups"))).status).toBe(200);
+    expect(seen.map((s) => s.url)).toEqual(["http://console.test:5959/api/groups"]);
+    roundtable.enabled = false;
+    expect((await handler(new Request("http://t3.test/api/groups"))).status).toBe(404);
+    expect(seen).toHaveLength(1);
   });
 
   it("forwards reads with the console bearer and passes status and body through", async () => {

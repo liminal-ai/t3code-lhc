@@ -942,6 +942,17 @@ describe("ServerSettings runtime-mode defaults", () => {
   });
 });
 
+describe("ServerSettings roundtableEnabled (fork-only)", () => {
+  it("defaults to off and accepts the patch key", () => {
+    expect(decodeServerSettings({}).roundtableEnabled).toBe(false);
+    expect(decodeServerSettings({ roundtableEnabled: true }).roundtableEnabled).toBe(true);
+    expect(decodeServerSettingsPatch({ roundtableEnabled: true })).toEqual({
+      roundtableEnabled: true,
+    });
+    expect(() => decodeServerSettingsPatch({ roundtableEnabled: "yes" })).toThrow();
+  });
+});
+
 const decodeDeviceHostSettings = Schema.decodeSync(ServerSettings);
 
 it("validates remote device hosts and rejects ambiguous host ids", () => {
