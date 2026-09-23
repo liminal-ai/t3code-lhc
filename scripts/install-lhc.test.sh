@@ -49,23 +49,19 @@ out="$("$INSTALL" --prefix "$PREFIX" --archive "$A")"
 check "says already at" '[[ "$out" == *"already at 0.0.40"* ]]'
 check "receipt untouched" '[ "$(stat -c %Y "$PREFIX/receipt.json")" = "$before" ]'
 
-echo "3. update from a mock releases/latest to a different version"
-cat > "$T/latest.json" <<EOF
-{"tag_name":"lhc-v0.0.41-lhc.1","assets":[
- {"name":"README.md","browser_download_url":"file://$T/nope"},
- {"name":"t3code-lhc-0.0.41-lhc.1-linux-x64.tar.gz","browser_download_url":"file://$B"},
- {"name":"t3code-lhc-0.0.41-lhc.1-linux-x64.tar.gz.sha256","browser_download_url":"file://$B.sha256"}]}
-EOF
-out="$(env -u GITHUB_TOKEN "$INSTALL" --prefix "$PREFIX" --releases-url "file://$T/latest.json")"
-check "http path with GITHUB_TOKEN absent" '[[ "$out" == *"installed 0.0.41-lhc.1"* ]]'
+echo "3. update to a different version from a local archive"
+out="$("$INSTALL" --prefix "$PREFIX" --archive "$B")"
+check "installs the new version" '[[ "$out" == *"installed 0.0.41-lhc.1"* ]]'
 check "current -> versions/0.0.41-lhc.1" '[ "$(node "$HERE/lib/lhc-store.ts" read-current "$PREFIX")" = "0.0.41-lhc.1" ]'
 check "old version kept" '[ -d "$PREFIX/versions/0.0.40" ]'
-check "receipt previous=0.0.40, source is the url" 'node -e "const r=require(process.argv[1]);process.exit(r.previous===\"0.0.40\"&&r.version===\"0.0.41-lhc.1\"&&r.source.startsWith(\"file://\")?0:1)" "$PREFIX/receipt.json"'
+check "receipt previous=0.0.40, source is the archive" 'node -e "const r=require(process.argv[1]);process.exit(r.previous===\"0.0.40\"&&r.version===\"0.0.41-lhc.1\"&&r.source.endsWith(\".tar.gz\")?0:1)" "$PREFIX/receipt.json"'
 check "launcher follows current" '[ "$("$PREFIX/bin/t3code-lhc" --lhc-version)" = "t3code-lhc 0.0.41-lhc.1 (upstream v0.0.41)" ]'
 
-echo "4. updater with the same version as the receipt does nothing (no download)"
-out="$(env -u GITHUB_TOKEN "$INSTALL" --prefix "$PREFIX" --releases-url "file://$T/latest.json")"
-check "says already at" '[[ "$out" == *"already at 0.0.41-lhc.1"* ]]'
+echo "4. no --archive and no --use refuses (there is no download path)"
+set +e; "$INSTALL" --prefix "$PREFIX" >"$T/out4" 2>&1; rc=$?; set -e
+check "non-zero exit" '[ "$rc" != 0 ]'
+check "names --archive" 'grep -q -- "--archive" "$T/out4"'
+check "current unchanged" '[ "$(node "$HERE/lib/lhc-store.ts" read-current "$PREFIX")" = "0.0.41-lhc.1" ]'
 
 echo "5. corrupted checksum refuses before extraction"
 D="$T/corrupt"; mkdir -p "$D"; cp "$A" "$D/t3code-lhc-0.0.40-linux-x64.tar.gz"

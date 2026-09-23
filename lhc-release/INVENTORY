@@ -12,7 +12,6 @@ apps/web/src/components/settings/settingsSearch.test.ts
 # longer differs fails. Keep each group sorted (LC_ALL=C).
 # survive; enforced by scripts/check-lhc-touch.sh, not listed here).
 .github/workflows/lhc-quality.yml
-.github/workflows/lhc-release.yml
 .gitignore
 FORK.md
 apps/server/package.json
@@ -109,13 +108,13 @@ scripts/build-lhc-archive.ts
 scripts/check-lhc-touch.sh
 scripts/install-lhc.sh
 scripts/install-lhc.test.sh
-scripts/lhc-clean-host-proof.sh
 scripts/lib/lhc-archive.test.ts
 scripts/lib/lhc-archive.ts
 scripts/lib/lhc-sidecar-stage.ts
 scripts/lib/lhc-store.test.ts
 scripts/lib/lhc-store.ts
 scripts/migrate-claude-lhc-driver.py
+scripts/setup-lhc-source.sh
 apps/web/src/components/AppSidebarLayout.tsx
 apps/web/src/components/LhcSidebar.logic.test.ts
 apps/web/src/components/LhcSidebar.logic.ts

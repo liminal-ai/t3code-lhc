@@ -10,15 +10,18 @@ concrete handoff for a release lives with its campaign evidence.
 2. Note the current receipt: `python3 -c 'import json;print(json.load(open("~/.local/share/t3code-lhc/receipt.json".replace("~",__import__("os").environ["HOME"])))["version"])'` → `<previous>`.
 3. Back up `~/.t3code/userdata/settings.json` and `~/.t3code/userdata/state.sqlite` (copy both; the sqlite copy via
    `sqlite3 state.sqlite ".backup <dest>"`).
-4. Download the release assets: `t3code-lhc-<version>-linux-x64.tar.gz`, its `.sha256`, and `install-lhc.sh`;
-   verify `sha256sum -c`.
+4. Take the local archive build: `t3code-lhc-<version>-linux-x64.tar.gz` and its `.sha256` (built on this box with
+   `scripts/build-lhc-archive.ts`; there are no downloadable archives); verify `sha256sum -c`. `install-lhc.sh` is in
+   the archive under `scripts/` and in the repo.
 
 ## Activate
 
 5. **Stop** the service unit.
 6. **Install**: `bash install-lhc.sh --archive t3code-lhc-<version>-linux-x64.tar.gz` (flips `current`;
    receipt.previous keeps `<previous>`).
-7. **Migrate** with the store's copy, three runs, on live userdata:
+7. **Settings** the release's handoff names (for example a fork setting the live box keeps on), edited in
+   `~/.t3code/userdata/settings.json` while the server is stopped.
+   7b. **Migrate** with the store's copy, three runs, on live userdata:
    `python3 ~/.local/share/t3code-lhc/current/scripts/migrate-claude-lhc-driver.py ~/.t3code/userdata`
    (dry-run: read the plan), then `… --apply`, then `… --apply` again (must print "already migrated; nothing to do").
 8. **Start** the unit.

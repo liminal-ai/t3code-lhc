@@ -9,7 +9,6 @@ import {
   buildManifest,
   expectedLhcVersionLine,
   isGnuTarVersion,
-  isQualifiedArchiveNpm,
   sha256Line,
   stageDependencies,
   tarArguments,
@@ -40,9 +39,10 @@ describe("lhc-archive", () => {
 
   it("builds a manifest carrying identity, commit, target, roots and sidecar pin", () => {
     const sidecar = {
-      repository: "https://github.com/liminal-ai/long-horizon-context.git",
-      commit: "1ba4cee9768514aa7358e8dba5f69b5c108dcdae",
+      package: "claude-lhc",
+      version: "0.1.0",
       claudeAgentSdk: "0.3.170",
+      source: "npm",
     };
     const manifest = buildManifest({
       identity: { version: "0.0.40-lhc.3", upstreamTag: "v0.0.40" },
@@ -147,46 +147,18 @@ describe("lhc-archive", () => {
     expect(isGnuTarVersion("bsdtar 3.7.2 - libarchive 3.7.2 zlib/1.2.13")).toBe(false);
   });
 
-  it("qualifies npm 11.16.0 and rejects the Node-bundled 11.4.2", () => {
-    expect(isQualifiedArchiveNpm("11.16.0")).toBe(true);
-    expect(isQualifiedArchiveNpm("11.16.0\n")).toBe(true);
-    expect(isQualifiedArchiveNpm("11.4.2")).toBe(false);
-  });
-
-  it("rewrites only workspace: specs onto file: bindings", async () => {
-    const { rewriteWorkspaceDependencies, packageJsonWithWorkspaceRewrites } =
-      await import("./lhc-sidecar-stage.ts");
-    expect(
-      rewriteWorkspaceDependencies(
-        {
-          lhc: "workspace:*",
-          zod: "4.4.3",
-          "@anthropic-ai/claude-agent-sdk": "0.3.170",
-        },
-        { lhc: "file:./lhc" },
-      ),
-    ).toEqual({
-      lhc: "file:./lhc",
-      zod: "4.4.3",
-      "@anthropic-ai/claude-agent-sdk": "0.3.170",
-    });
-    expect(() =>
-      rewriteWorkspaceDependencies({ other: "workspace:*" }, { lhc: "file:./lhc" }),
-    ).toThrow(/other/);
-    expect(
-      packageJsonWithWorkspaceRewrites(
-        {
-          name: "claude-lhc",
-          version: "0.1.0",
-          dependencies: { lhc: "workspace:*", zod: "4.4.3" },
-        },
-        { lhc: "file:./lhc" },
-      ),
-    ).toEqual({
-      name: "claude-lhc",
-      version: "0.1.0",
-      dependencies: { lhc: "file:./lhc", zod: "4.4.3" },
-    });
+  it("installs the recorded claude-lhc version, or a local tarball of it, and checks what landed", async () => {
+    const { assertSidecarPackage, sidecarInstallSpec } = await import("./lhc-sidecar-stage.ts");
+    const pin = { package: "claude-lhc", version: "0.1.0" };
+    expect(sidecarInstallSpec(pin, undefined)).toBe("0.1.0");
+    expect(sidecarInstallSpec(pin, "/tmp/pack/claude-lhc-0.1.0.tgz")).toBe(
+      "file:/tmp/pack/claude-lhc-0.1.0.tgz",
+    );
+    expect(() => assertSidecarPackage({ name: "claude-lhc", version: "0.1.0" }, pin)).not.toThrow();
+    expect(() => assertSidecarPackage({ name: "claude-lhc", version: "0.1.1" }, pin)).toThrow(
+      /claude-lhc@0.1.1, not the recorded claude-lhc@0.1.0/,
+    );
+    expect(() => assertSidecarPackage({ name: "other", version: "0.1.0" }, pin)).toThrow();
     const { packedLhcResolvesInsideArchive } = await import("./lhc-sidecar-stage.ts");
     expect(packedLhcResolvesInsideArchive("/tmp/x/vendor/claude-lhc/lhc", "/tmp/x")).toBe(true);
     expect(
@@ -262,7 +234,12 @@ describe("archiveExcludedPrefixes", () => {
       platform: "linux",
       arch: "x64",
       nodeEngine: ">=24",
-      sidecar: { repository: "r", commit: "c".repeat(40), claudeAgentSdk: "0.3.170" },
+      sidecar: {
+        package: "claude-lhc",
+        version: "0.1.0",
+        claudeAgentSdk: "0.3.170",
+        source: "npm",
+      },
     });
     expect(manifest.scripts).toEqual([...ARCHIVE_SCRIPTS]);
   });

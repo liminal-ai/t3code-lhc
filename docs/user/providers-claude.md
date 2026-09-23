@@ -4,10 +4,12 @@ T3 Code uses Claude Code's login and configuration. Start with the default provi
 for one account; [provider setup](./install.md#providers) covers installation and
 shared provider settings.
 
-A Claude instance can enable **Long-horizon context (LHC)**. That routes the
-thread through the bundled `claude-lhc` sidecar (Node JS entry, plus an
-authenticated `claude` on PATH). Leave LHC off for stock Claude Code.
-`CLAUDE_LHC_SIDECAR` overrides the bundled JS entry if you need to.
+The **Claude LHC** provider (t3code-lhc only) runs each thread through the
+`claude-lhc` sidecar with long-horizon context: the `claude-lhc` npm package,
+installed by `scripts/setup-lhc-source.sh` into `.lhc/sidecar`, plus an
+authenticated `claude` on PATH. The server finds the sidecar through
+`CLAUDE_LHC_SIDECAR` (the package's `dist/sidecar.js`). Use the stock Claude
+provider for Claude Code without LHC.
 
 LHC uses the same Claude login, settings, and memory as ordinary Claude Code:
 `CLAUDE_CONFIG_DIR` if set, otherwise `~/.claude`. Compact and resume stay in

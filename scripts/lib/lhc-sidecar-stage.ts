@@ -1,7 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off
-// Pure helpers for bundling claude-lhc into the T3 LHC archive.
-// Dependency versions come from the recorded LHC pin's package.json files;
-// this module only rewrites workspace: protocol refs. IO lives in
+// Pure helpers for bundling claude-lhc into the T3 LHC archive. The sidecar is
+// the published claude-lhc npm package (lhc core bundled inside it), installed
+// at the version lhc-release/sidecar.json records. IO lives in
 // scripts/build-lhc-archive.ts.
 
 import * as NodePath from "node:path";
@@ -9,13 +9,16 @@ import * as NodePath from "node:path";
 export const LHC_SIDECAR_ARCHIVE_ROOT = "vendor/claude-lhc";
 export const LHC_SIDECAR_LAUNCHER = `${LHC_SIDECAR_ARCHIVE_ROOT}/dist/sidecar.js`;
 
+/** lhc-release/sidecar.json: the published claude-lhc package the archive installs. */
 export interface SidecarPin {
-  readonly repository: string;
-  readonly commit: string;
+  readonly package: string;
+  readonly version: string;
 }
 
 export interface SidecarProvenance extends SidecarPin {
   readonly claudeAgentSdk: string;
+  /** `npm`, or `tarball:<sha256>` for a local pre-publish build of the same version. */
+  readonly source: string;
 }
 
 /** Bundled Claude executables (~200MB). T3 passes pathToClaudeCodeExecutable. */
@@ -38,62 +41,12 @@ export function packedLhcResolvesInsideArchive(
   return relative !== "" && !relative.startsWith("..") && !NodePath.isAbsolute(relative);
 }
 
-/** Hoisted physical node_modules. Optional deps stay on; executables are removed by name.
- *  Windows npm 11.16 still junctions file:./lhc; staging copies that directory after install. */
-export const SIDECAR_NPMRC = "node-linker=hoisted\n";
-
-const WORKSPACE_PROTOCOL = "workspace:";
-
-/**
- * Copy a dependency map, replacing `workspace:` specs with the given file: path.
- * Unknown workspace names throw so a new workspace dep cannot ship unresolved.
- */
-export function rewriteWorkspaceDependencies(
-  dependencies: Readonly<Record<string, string>>,
-  fileBindings: Readonly<Record<string, string>>,
-): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [name, spec] of Object.entries(dependencies)) {
-    if (!spec.startsWith(WORKSPACE_PROTOCOL)) {
-      out[name] = spec;
-      continue;
-    }
-    const bound = fileBindings[name];
-    if (bound === undefined) {
-      throw new Error(`workspace dependency ${name} has no file: binding`);
-    }
-    out[name] = bound;
-  }
-  return out;
-}
-
 export interface NpmPackageJson {
   readonly name?: string;
   readonly version?: string;
   readonly dependencies?: Readonly<Record<string, string>>;
   readonly optionalDependencies?: Readonly<Record<string, string>>;
   readonly [key: string]: unknown;
-}
-
-/** Source package.json with workspace: specs rewritten; all other fields kept. */
-export function packageJsonWithWorkspaceRewrites(
-  pkg: NpmPackageJson,
-  fileBindings: Readonly<Record<string, string>>,
-): NpmPackageJson {
-  return {
-    ...pkg,
-    ...(pkg.dependencies === undefined
-      ? {}
-      : { dependencies: rewriteWorkspaceDependencies(pkg.dependencies, fileBindings) }),
-    ...(pkg.optionalDependencies === undefined
-      ? {}
-      : {
-          optionalDependencies: rewriteWorkspaceDependencies(
-            pkg.optionalDependencies,
-            fileBindings,
-          ),
-        }),
-  };
 }
 
 export function claudeAgentSdkVersionFromPackage(pkg: NpmPackageJson): string {
@@ -104,10 +57,16 @@ export function claudeAgentSdkVersionFromPackage(pkg: NpmPackageJson): string {
   return version;
 }
 
-export function assertSidecarPin(actual: string, expected: SidecarPin): void {
-  if (actual !== expected.commit) {
+/** The installed package must be exactly the recorded one, whichever source it came from. */
+export function assertSidecarPackage(pkg: NpmPackageJson, expected: SidecarPin): void {
+  if (pkg.name !== expected.package || pkg.version !== expected.version) {
     throw new Error(
-      `LHC sidecar source commit ${actual} is not the recorded pin ${expected.commit}`,
+      `installed sidecar is ${pkg.name}@${pkg.version}, not the recorded ${expected.package}@${expected.version}`,
     );
   }
+}
+
+/** npm install spec: the registry version, or a local tarball of that version. */
+export function sidecarInstallSpec(pin: SidecarPin, tarballPath: string | undefined): string {
+  return tarballPath === undefined ? pin.version : `file:${NodePath.resolve(tarballPath)}`;
 }

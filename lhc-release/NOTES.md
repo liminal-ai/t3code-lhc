@@ -1,3 +1,27 @@
+# unreleased
+
+Upstream v0.0.42 (synced since 0.0.40-lhc.8). Sidecar `claude-lhc` 0.1.0 from npm (LHC `0581e775`: LHC main
+`b11b8e7a` plus the sidecar thread-id fix and the package). Local builds of this line on the live box:
+`0.0.42-lhc.1-local.1` to `-local.3` (RELEASES.md).
+
+- **Source releases.** A public release is now a tag on a soaked commit plus these notes; there are no public
+  archives or desktop builds. Install from a checkout with `scripts/setup-lhc-source.sh` (checks Node and pnpm,
+  installs dependencies and the sidecar, builds the server). `lhc-release.yml` and the clean-host proof are retired;
+  `install-lhc.sh` installs local archive builds only (`--archive` / `--use`, no download).
+- **Sidecar from npm.** `lhc-release/sidecar.json` records the `claude-lhc` package version instead of an LHC commit;
+  the archive build installs that package (or `--sidecar-tarball`, a local pack of the same version) instead of
+  cloning and compiling the LHC repo, and no longer needs npm 11.16.
+- **Sidecar thread id.** `T3CODE_THREAD_ID`, which the driver sets on the sidecar, now reaches Claude Code and its
+  shells, so `lhc-agent` in a Claude LHC seat resolves its sender without `--from`.
+- **Roundtable (alpha).** The group-chat view over lhc-console: a Roundtable section in the LHC sidebar with
+  working / unread / failed indicators, `/roundtable/<id>` with member activity, @mentions and default-recipient
+  checkboxes, and a server proxy `/api/groups/*` to the console with its owner token. Behind the server setting
+  **Roundtable (alpha)** (`roundtableEnabled`, off by default; requires lhc-console). Off: no sidebar section, the
+  route goes home, the proxy answers 404. Toggling needs no restart.
+- **Sidebar activity (Agents).** Agent rows show upstream's status pill (working, completed, failed) and age.
+- **Upstream v0.0.42 sync.** Upstream's changes to copied regions were ported into the fork's Agents section
+  (FORK.md "Copies of upstream code").
+
 # 0.0.40-lhc.8
 
 Upstream remains v0.0.40. Sidecar pin LHC `fffdcc8e` (LHC main head at cut; cc-lhc 0.4.2 version commit, sidecar tree unchanged from `8f5c3276`).

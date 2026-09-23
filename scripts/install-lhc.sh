@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Install or update the t3code-lhc server archive into a versioned store.
+# Install a locally built t3code-lhc server archive into a versioned store.
+# Public releases are source releases (FORK.md "Release"); archives are built
+# on the box that runs them (scripts/build-lhc-archive.ts) and never downloaded.
 #
-#   install-lhc.sh                      # fetch releases/latest, install if its version differs from the receipt
 #   install-lhc.sh --archive FILE       # install a local archive (FILE.sha256 must sit beside it)
 #   install-lhc.sh --use VERSION        # repoint `current` at an already installed version (rollback)
 #
-# Options: --prefix DIR (default ~/.local/share/t3code-lhc), --releases-url URL,
+# Options: --prefix DIR (default ~/.local/share/t3code-lhc),
 #          --arch x64|arm64 (default: host), --platform linux|darwin|win32 (default: host),
 #          --force (replace an installed version dir).
 #
@@ -31,7 +32,6 @@
 set -euo pipefail
 
 PREFIX="${HOME}/.local/share/t3code-lhc"
-RELEASES_URL="https://api.github.com/repos/liminal-ai/t3code-lhc/releases/latest"
 ARCHIVE=""
 USE_VERSION=""
 FORCE=0
@@ -43,7 +43,6 @@ die() { echo "install-lhc: $*" >&2; exit 1; }
 while [ $# -gt 0 ]; do
   case "$1" in
     --prefix) PREFIX="$2"; shift 2 ;;
-    --releases-url) RELEASES_URL="$2"; shift 2 ;;
     --archive) ARCHIVE="$2"; shift 2 ;;
     --use) USE_VERSION="$2"; shift 2 ;;
     --arch) ARCH="$2"; shift 2 ;;
@@ -181,30 +180,7 @@ if [ -n "$ARCHIVE" ]; then
   cp "$ARCHIVE" "$WORK/$NAME"
   cp "$ARCHIVE.sha256" "$WORK/$NAME.sha256"
 else
-  echo "install-lhc: reading $RELEASES_URL"
-  # GITHUB_TOKEN, when set, only authenticates the releases JSON read (hosted
-  # runners share an anonymous rate limit); asset downloads stay anonymous.
-  # Do not expand an empty array here: Bash 3.2 `set -u` treats that as unbound
-  # (macOS /bin/bash).
-  if [ -n "${GITHUB_TOKEN:-}" ]; then
-    curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" "$RELEASES_URL" -o "$WORK/release.json" \
-      || die "could not read releases JSON at $RELEASES_URL"
-  else
-    curl -fsSL "$RELEASES_URL" -o "$WORK/release.json" \
-      || die "could not read releases JSON at $RELEASES_URL"
-  fi
-  NAME="$(node -e '
-const rel = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
-const suffix = process.argv[2];
-const asset = (rel.assets ?? []).find((a) => a.name.startsWith("t3code-lhc-") && a.name.endsWith(suffix));
-if (!asset) { console.error("no asset ending in " + suffix + " on release " + (rel.tag_name ?? "?")); process.exit(2); }
-const sum = (rel.assets ?? []).find((a) => a.name === asset.name + ".sha256");
-if (!sum) { console.error("no " + asset.name + ".sha256 asset"); process.exit(2); }
-process.stdout.write(asset.name);
-' "$WORK/release.json" "$SUFFIX")" || die "asset selection failed"
-  URL="$(node -e 'const rel=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(rel.assets.find(a=>a.name===process.argv[2]).browser_download_url)' "$WORK/release.json" "$NAME")"
-  SUM_URL="$(node -e 'const rel=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(rel.assets.find(a=>a.name===process.argv[2]+".sha256").browser_download_url)' "$WORK/release.json" "$NAME")"
-  SOURCE="$URL"
+  die "pass --archive FILE (a local build; there is no download) or --use VERSION"
 fi
 
 VERSION="${NAME#t3code-lhc-}"
@@ -218,12 +194,6 @@ if [ "$PREVIOUS" = "$VERSION" ] && [ "$FORCE" = 0 ]; then
 fi
 if [ -d "$STORE/$VERSION" ] && [ "$FORCE" = 0 ]; then
   die "version $VERSION is already in the store; use --use $VERSION to activate it or --force to replace it"
-fi
-
-if [ -z "$ARCHIVE" ]; then
-  echo "install-lhc: downloading $NAME"
-  curl -fsSL "$URL" -o "$WORK/$NAME" || die "download failed: $URL"
-  curl -fsSL "$SUM_URL" -o "$WORK/$NAME.sha256" || die "download failed: $SUM_URL"
 fi
 
 SHA256="$(node -e '

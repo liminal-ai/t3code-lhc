@@ -124,10 +124,14 @@ resume/cursor shape, usage reporting) or that bypasses the seam (a second SDK
 fork-owned and outside this rule; an SDK pin bump there is a fork change,
 tracked by the LHC pin line in `lhc-release/RELEASES.md`.
 
-## Archive, install, launcher (slice 4)
+## Local archive, install, launcher (this box)
+
+Public releases are source releases ("Release" below). The archive, installer and
+launcher remain for boxes that run a steward-activated local build (this one); an
+archive is built where it runs and never downloaded.
 
 - Build: `node scripts/build-lhc-archive.ts` (flags `--skip-build`, `--keep-stage`,
-  `--platform linux|darwin|win32`, `--arch`, `--out`). Produces
+  `--platform linux|darwin|win32`, `--arch`, `--out`, `--sidecar-tarball`). Produces
   `dist-lhc/t3code-lhc-<version>-<platform>-<arch>.tar.gz` plus `.sha256` for
   linux-x64, darwin-arm64, and win32-x64; inside: `manifest.json`, `apps/server/dist`
   (web client at `dist/client`, no source maps), `node_modules` (runtime externals
@@ -135,16 +139,18 @@ tracked by the LHC pin line in `lhc-release/RELEASES.md`.
   compiled on the Linux builder, Mac/Windows node-pty prebuilds with
   `spawn-helper` mode 0755, Windows `@ff-labs/fff-bin-win32-` and
   `@yuuang/ffi-rs-win32-` kept despite the shared WSL exclude list), and
-  `vendor/claude-lhc` (compiled `dist/sidecar.js`, built `lhc` dist, JS closure from
-  `lhc-release/sidecar.json`; after npm, `node_modules/lhc` is copied as a real
-  directory — Windows npm 11.16 still junctions `file:./lhc` even with
-  `install-links=true`). Optional `@anthropic-ai/claude-agent-sdk-*`
+  `vendor/claude-lhc` (the `claude-lhc` npm package at the version
+  `lhc-release/sidecar.json` records, laid out with `dist/sidecar.js` at its root, its
+  bundled `lhc` core and its dependency closure under `node_modules`;
+  `--sidecar-tarball` installs a local `npm pack` of that same version before it is
+  published, and the manifest records `source: tarball:<sha256>`). Optional `@anthropic-ai/claude-agent-sdk-*`
   platform packages are not shipped: T3 passes `pathToClaudeCodeExecutable`.
   The script refuses to emit an archive whose extracted tree does not answer
   `--lhc-version` with the manifest identity. It also ships `scripts/install-lhc.sh`
   and `scripts/migrate-claude-lhc-driver.py` (`ARCHIVE_SCRIPTS`, listed in the
-  manifest, probed after packing) and fails before the server build when the
-  archive npm is not 11.16 (`LHC_ARCHIVE_NPM` points at an npm-cli.js).
+  manifest, probed after packing). npm is the one bundled with the building Node
+  (`LHC_ARCHIVE_NPM` overrides with an npm-cli.js); the npm 11.16 requirement went away
+  with the LHC-commit clone.
   Activation order for the steward: `lhc-release/ACTIVATION.md`.
   Builds are reproducible: two builds of one commit give one sha256 (no build time
   in the manifest, tar mtimes pinned to the commit time, `gzip -n`).
@@ -157,9 +163,8 @@ tracked by the LHC pin line in `lhc-release/RELEASES.md`.
   (PowerShell cannot execute it). `mv` of the extracted tree is portable (no GNU
   `mv -T`). Checksums use Node crypto. Windows drive-letter prefixes are
   converted with Git `cygpath` before GNU tar `-C`.
-  With no `--archive` it reads
-  `liminal-ai/t3code-lhc` releases/latest and installs only if the asset version
-  differs from the receipt: equality, never ordering. Old versions stay; rollback
+  `--archive` or `--use` is required; there is no download path. Reinstalling the
+  receipt's version is a no-op (equality, never ordering). Old versions stay; rollback
   is `--use <version>`. It never touches systemd. Tests: `scripts/install-lhc.test.sh`.
 - Launcher: `<prefix>/bin/t3code-lhc` sets `CLAUDE_LHC_SIDECAR` to
   `current/vendor/claude-lhc/dist/sidecar.js` unless it is already set, then execs
@@ -169,9 +174,8 @@ tracked by the LHC pin line in `lhc-release/RELEASES.md`.
   `~/.t3code/run-server.sh` from `node /srv/work/t3code/apps/server/dist/bin.mjs ...`
   to `"$HOME/.local/share/t3code-lhc/bin/t3code-lhc" ...` with the same arguments and
   environment, then restart `t3code-3773.service`.
-- Release tags on the fork repo are `lhc-v<version>` (upstream tags are fetched
-  into the same local namespace, so a bare `v0.0.40` would clash). The displayed
-  version stays `<version>` without the prefix.
+- Local builds carry a `-local.N` suffix on the version they build toward
+  (`0.0.42-lhc.1-local.5`); record each activated one in `lhc-release/RELEASES.md`.
 
 ## CLI text that still names npm `t3` (documented exclusion)
 
@@ -185,34 +189,31 @@ package and are unsupported on the fork build; an archive install advertises no
 self-update capability (`cloud/selfUpdate.ts`: not desktop- or boot-service-managed),
 so the UI's update path is inert.
 
-## Release (slice 5)
+## Release (source releases)
 
-`lhc-release.yml` is dispatch only (a tag never triggers it).
+A public t3code-lhc release is a tag on a soaked commit plus release notes. There are
+no public archives and no desktop builds. `lhc-release.yml` (candidate / promote /
+public check) and `scripts/lhc-clean-host-proof.sh` are retired; the last promoted
+archive release is `0.0.40-lhc.8`.
 
-- Candidate: dispatch with `promote` unchecked and `candidate_run_id` empty. Native jobs build linux-x64,
-  darwin-arm64, and win32-x64 under Node 24.3 with GNU tar (macOS `gnu-tar`,
-  Windows Git `usr/bin/tar.exe`) and npm 11.16.0 installed into an isolated
-  `RUNNER_TEMP` prefix (not the T3 pnpm workspace; not the Node-bundled 11.4.2),
-  run the two scripts tests on Linux, prove the
-  Linux archive on a clean host (`scripts/lhc-clean-host-proof.sh`: identity, UI,
-  packaged sidecar stdin-EOF under Node), then install each native artifact on
-  its OS and prove `--lhc-version` plus sidecar stdin-EOF. Upload each
-  `<name>.tar.gz`, `.sha256`, `.manifest.json` (14 days).
-- Qualification: those jobs green, plus the local gate on the same artifact:
-  install into a scratch prefix and port with the live sidecar, the campaign's
-  13-step smoke against it (tool turns, manual compact, restart, resume), one
-  stock desktop client against that port. Recorded in the campaign evidence.
-- Promote: dispatch `promote=true` **and** `candidate_run_id` of a successful
-  same-SHA candidate run after Mac/Windows authenticated lifecycle on those
-  exact bytes. That path downloads the frozen three artifacts (`actions:read`
-  plus `contents:write`, same pattern as Codex `lhc-release-promote.yml`) and
-  does not rebuild. `promote=true` without `candidate_run_id` fails. A tag exists only
-  for a promoted build. An existing tag or release fails the run: never
-  re-promote, publish `<upstream>-lhc.N+1`. Releases are never deleted or moved.
-- Public check: a fresh runner runs `scripts/install-lhc.sh` with no `--archive`
-  against releases/latest, requires the launcher to print the promoted identity,
-  and requires a second run to no-op ("already at").
-- Record: one line per promoted release in `lhc-release/RELEASES.md`.
+- Soak: the commit runs as a local archive build on this box (steward activation,
+  `lhc-release/ACTIVATION.md`) until Lee calls it good.
+- Tag: `lhc-v<version>` on that exact commit (upstream tags are fetched into the same
+  local namespace, so a bare `v0.0.42` would clash). The displayed version stays
+  `<version>` without the prefix.
+- Notes (GitHub release body and `lhc-release/NOTES.md`): what changed, the
+  `claude-lhc` sidecar version (and its LHC source commit), required configuration,
+  and any migration to run.
+- Install from source: clone at the tag, then `scripts/setup-lhc-source.sh`. It checks
+  Node (root `engines`) and pnpm (`packageManager`, exact), runs
+  `pnpm install --frozen-lockfile`, installs `claude-lhc@<sidecar.json version>` from
+  npm into `.lhc/sidecar` (git-ignored; `--sidecar-tarball` for a local pack of the same
+  version), builds the server with the web client (`vp run --filter t3 build`), and
+  prints the run command with `CLAUDE_LHC_SIDECAR` set.
+- Sidecar: `claude-lhc` is published to npm from the LHC repo
+  (`packages/claude-lhc`, bundling the `lhc` core); `lhc-release/sidecar.json` records
+  the package and version only. Bumping it is a fork change like any other.
+- Record: one line per tag, and per activated local build, in `lhc-release/RELEASES.md`.
 - Release standard (same text as LHC `docs/releases/README.md`; keep the two
   identical): qualification runs on the exact commit that is promoted, not an
   earlier candidate; at least one live model turn on the shipped artifact
@@ -392,26 +393,21 @@ resolve to on PATH.
 
 `npx t3@latest`, `t3 service install` pointing at the npm package, any
 self-update path, or anything that touches the running server's `dist/`. The
-fork is installed from `liminal-ai/t3code-lhc` releases only.
+fork runs from a source checkout (`scripts/setup-lhc-source.sh`) or, on this box, a
+steward-activated local archive build.
 
 ## Prerequisites (declared, not bundled)
 
-Node >= 24.3 (qualified 24.3; Linux also regresses on operational 24.18) and an
-authenticated Claude Code CLI, plus provider CLIs for Codex/Grok when those
-providers are enabled. The sidecar itself is in the archive as compiled JS; a
-source checkout of long-horizon-context is not required. `CLAUDE_LHC_SIDECAR`
-overrides the bundled JS entry. The archive builder clones
-`lhc-release/sidecar.json`'s commit; it does not copy a developer working tree.
-Source-build recipe: Node 24.3, npm 11.16.0 for the LHC pin install (the Node
-24.3 bundle is 11.4.2 and is refused), GNU tar (`gtar` / Git `usr/bin/tar.exe`;
-System32 and BSD `tar` are not enough), then `node scripts/build-lhc-archive.ts`.
-Override with `LHC_ARCHIVE_TAR` / `LHC_ARCHIVE_NPM` (path to that isolated
-prefix's `node_modules/npm/bin/npm-cli.js`). Do not lower
-third-party `engines` blindly. The builder runs `tsc` as
-`process.execPath [typescript/bin/tsc, ...]` from the pin's own install, then
-prunes devDependencies. Vite+ is `process.execPath [node_modules/vite-plus/bin/vp, ...]`,
-not `node_modules/.bin/vp`. GNU tar child PATH includes that tar's directory so
-Windows Git `gzip` is reachable.
+Node >= 24.3 (qualified 24.3; Linux also regresses on operational 24.18), pnpm at the
+root `packageManager` version, and an authenticated Claude Code CLI, plus provider CLIs
+for Codex/Grok when those providers are enabled. A checkout of long-horizon-context is
+not required: the sidecar is the `claude-lhc` npm package (compiled JS, `lhc` core
+bundled). `CLAUDE_LHC_SIDECAR` names its `dist/sidecar.js`. Local archive builds also
+need GNU tar (`gtar` / Git `usr/bin/tar.exe`; System32 and BSD `tar` are not enough),
+overridable with `LHC_ARCHIVE_TAR`. Do not lower third-party `engines` blindly.
+Vite+ is `process.execPath [node_modules/vite-plus/bin/vp, ...]`, not
+`node_modules/.bin/vp`. GNU tar child PATH includes that tar's directory so Windows
+Git `gzip` is reachable.
 
 ## Versioning on branches
 

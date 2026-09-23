@@ -7,9 +7,13 @@
 //
 //   node scripts/build-lhc-archive.ts [--skip-build] [--keep-stage]
 //     [--platform linux|darwin|win32] [--arch x64|arm64] [--out dist-lhc]
+//     [--sidecar-tarball claude-lhc-<version>.tgz]
 //
-// Requires GNU tar (LHC_ARCHIVE_TAR) and npm 11.16 (LHC_ARCHIVE_NPM = npm-cli.js).
-// tsc is process.execPath + the pin's typescript/bin/tsc; no shebang, no host tsc.
+// The Claude LHC sidecar is the claude-lhc npm package at the version
+// lhc-release/sidecar.json records; --sidecar-tarball installs a local pack of
+// that same version instead (before it is published). Requires GNU tar
+// (LHC_ARCHIVE_TAR); npm is the one bundled with this Node (LHC_ARCHIVE_NPM
+// overrides with an npm-cli.js).
 //
 // The post-pack check extracts the archive to a temp dir and requires
 // `node apps/server/dist/bin.mjs --lhc-version` to print the identity line, so
@@ -48,22 +52,19 @@ import {
   expectedLhcVersionLine,
   isArchiveTarget,
   isGnuTarVersion,
-  isQualifiedArchiveNpm,
-  LHC_ARCHIVE_NPM_VERSION,
   sha256Line,
   stageDependencies,
   tarArguments,
   tarExtractArguments,
 } from "./lib/lhc-archive.ts";
 import {
-  assertSidecarPin,
+  assertSidecarPackage,
   claudeAgentSdkVersionFromPackage,
   isBundledClaudeExecutablePackage,
   LHC_SIDECAR_ARCHIVE_ROOT,
   LHC_SIDECAR_LAUNCHER,
   packedLhcResolvesInsideArchive,
-  packageJsonWithWorkspaceRewrites,
-  SIDECAR_NPMRC,
+  sidecarInstallSpec,
   type NpmPackageJson,
   type SidecarPin,
   type SidecarProvenance,
@@ -88,6 +89,7 @@ function parseArgs(argv: ReadonlyArray<string>) {
     platform: undefined as ArchivePlatform | undefined,
     arch: undefined as ArchiveArch | undefined,
     out: "dist-lhc",
+    sidecarTarball: undefined as string | undefined,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -105,36 +107,41 @@ function parseArgs(argv: ReadonlyArray<string>) {
         throw new Error(`--arch must be x64 or arm64, got ${value}`);
       options.arch = value;
     } else if (arg === "--out") options.out = argv[++i] ?? options.out;
-    else throw new Error(`unknown argument ${arg}`);
+    else if (arg === "--sidecar-tarball") {
+      const value = argv[++i];
+      if (value === undefined || !NodeFS.existsSync(value)) {
+        throw new Error(`--sidecar-tarball needs an existing .tgz, got ${value}`);
+      }
+      options.sidecarTarball = NodePath.resolve(value);
+    } else throw new Error(`unknown argument ${arg}`);
   }
   return options;
 }
 
-/** LHC pin install: npm 11.16 works; 11.4.2 does not. Override with LHC_ARCHIVE_NPM. */
-function resolveNpmCli(): string {
+/** The npm bundled with this Node, unless LHC_ARCHIVE_NPM names an npm-cli.js. */
+function resolveArchiveNpm(): string {
   const override = process.env.LHC_ARCHIVE_NPM?.trim();
   if (override !== undefined && override !== "") return override;
-  const local = NodePath.join(repoRoot, "node_modules", "npm", "bin", "npm-cli.js");
-  if (NodeFS.existsSync(local)) return local;
-  throw new Error(
-    `npm ${LHC_ARCHIVE_NPM_VERSION} is required for the LHC pin install (Node 24.3 bundles 11.4.2). Install npm@${LHC_ARCHIVE_NPM_VERSION} or set LHC_ARCHIVE_NPM to that npm-cli.js.`,
-  );
-}
-
-/** Resolve and verify the archive npm up front, before the server build (lhc.8). */
-function assertArchiveNpm(): string {
-  const cli = resolveNpmCli();
-  const version = runNodeCli(cli, ["--version"], repoRoot).trim();
-  if (!isQualifiedArchiveNpm(version)) {
-    throw new Error(
-      `archive npm is ${version}; need ${LHC_ARCHIVE_NPM_VERSION} (11.4.2 is not qualified). Set LHC_ARCHIVE_NPM to an npm ${LHC_ARCHIVE_NPM_VERSION} npm-cli.js.`,
-    );
+  const candidates = [
+    NodePath.join(NodePath.dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js"),
+    NodePath.join(
+      NodePath.dirname(NodePath.dirname(process.execPath)),
+      "lib",
+      "node_modules",
+      "npm",
+      "bin",
+      "npm-cli.js",
+    ),
+  ];
+  const found = candidates.find((candidate) => NodeFS.existsSync(candidate));
+  if (found === undefined) {
+    throw new Error(`cannot locate npm (checked ${candidates.join(", ")}); set LHC_ARCHIVE_NPM`);
   }
-  return cli;
+  return found;
 }
 
 function runNpm(args: ReadonlyArray<string>, cwd: string): string {
-  return runNodeCli(assertArchiveNpm(), args, cwd);
+  return runNodeCli(resolveArchiveNpm(), args, cwd);
 }
 
 function runNodeCli(cli: string, args: ReadonlyArray<string>, cwd: string): string {
@@ -142,11 +149,6 @@ function runNodeCli(cli: string, args: ReadonlyArray<string>, cwd: string): stri
     return run(process.execPath, [cli, ...args], cwd);
   }
   throw new Error(`LHC_ARCHIVE_NPM must be a Node .js CLI, got ${cli}`);
-}
-
-function runTsc(tscFile: string, args: ReadonlyArray<string>, cwd: string): string {
-  if (!NodeFS.existsSync(tscFile)) throw new Error(`tsc not found at ${tscFile}`);
-  return run(process.execPath, [tscFile, ...args], cwd);
 }
 
 function runVp(args: ReadonlyArray<string>, cwd: string): string {
@@ -267,39 +269,12 @@ function run(
   return result.stdout;
 }
 
-function copyTree(source: string, destination: string, skip: ReadonlySet<string>): void {
-  NodeFS.mkdirSync(destination, { recursive: true });
-  for (const entry of NodeFS.readdirSync(source, { withFileTypes: true })) {
-    if (skip.has(entry.name)) continue;
-    const from = NodePath.join(source, entry.name);
-    const to = NodePath.join(destination, entry.name);
-    if (entry.isDirectory()) copyTree(from, to, skip);
-    else if (entry.isSymbolicLink()) {
-      NodeFS.symlinkSync(NodeFS.readlinkSync(from), to);
-    } else NodeFS.copyFileSync(from, to);
-  }
-}
-
 function readPackageJson(path: string): NpmPackageJson {
   return JSON.parse(NodeFS.readFileSync(path, "utf8")) as NpmPackageJson;
 }
 
 function writePackageJson(path: string, pkg: NpmPackageJson): void {
   NodeFS.writeFileSync(path, `${JSON.stringify(pkg, null, 2)}\n`);
-}
-
-/** Replace a file: junction/symlink with a real directory inside the archive. */
-function materializePackedLhc(sidecarRoot: string): void {
-  const packed = NodePath.join(sidecarRoot, "node_modules", "lhc");
-  const source = NodePath.join(sidecarRoot, "lhc");
-  if (!NodeFS.existsSync(source)) {
-    throw new Error("staged vendor/claude-lhc/lhc missing before packing");
-  }
-  NodeFS.rmSync(packed, { recursive: true, force: true });
-  NodeFS.cpSync(source, packed, { recursive: true, dereference: true });
-  if (NodeFS.lstatSync(packed).isSymbolicLink()) {
-    throw new Error("materializePackedLhc left node_modules/lhc as a symlink");
-  }
 }
 
 function removeBundledClaudeExecutables(nodeModulesDir: string): void {
@@ -311,86 +286,63 @@ function removeBundledClaudeExecutables(nodeModulesDir: string): void {
   }
 }
 
-/** Materialize the recorded LHC pin as that commit's tree, never a working copy. */
-function materializeLhcPin(pin: SidecarPin, dest: string): string {
-  NodeFS.mkdirSync(dest, { recursive: true });
-  run("git", ["init", "--quiet"], dest);
-  run("git", ["remote", "add", "origin", pin.repository], dest);
-  run("git", ["fetch", "--quiet", "--depth=1", "origin", pin.commit], dest);
-  run("git", ["checkout", "--quiet", "FETCH_HEAD"], dest);
-  const commit = run("git", ["rev-parse", "HEAD"], dest).trim();
-  assertSidecarPin(commit, pin);
-  return dest;
-}
-
-function buildLhcDist(source: string, lhcPkg: NpmPackageJson, destDist: string): void {
-  const work = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3code-lhc-sdk-build-"));
-  try {
-    copyTree(
-      NodePath.join(source, "packages/lhc"),
-      work,
-      new Set(["node_modules", "dist", "test"]),
-    );
-    writePackageJson(NodePath.join(work, "package.json"), lhcPkg);
-    console.log("[lhc-archive] installing LHC package build dependencies...");
-    runNpm(["install", "--no-fund", "--no-audit"], work);
-    const tsc = NodePath.join(work, "node_modules", "typescript", "bin", "tsc");
-    if (!NodeFS.existsSync(tsc)) {
-      throw new Error("LHC package install did not provide typescript/bin/tsc");
-    }
-    runTsc(tsc, ["-p", "tsconfig.json"], work);
-    const built = NodePath.join(work, "dist");
-    if (!NodeFS.existsSync(NodePath.join(built, "index.js"))) {
-      throw new Error("LHC tsc produced no dist/index.js");
-    }
-    NodeFS.mkdirSync(destDist, { recursive: true });
-    copyTree(built, destDist, new Set());
-  } finally {
-    NodeFS.rmSync(work, { recursive: true, force: true });
-  }
-}
-
-function stageClaudeLhc(stage: string, pin: SidecarPin): SidecarProvenance {
+/**
+ * Install the recorded claude-lhc package (lhc core bundled inside it) and lay
+ * it out as vendor/claude-lhc: the package itself at the root, so the entry is
+ * vendor/claude-lhc/dist/sidecar.js as before, with its dependency closure
+ * merged into vendor/claude-lhc/node_modules.
+ */
+function stageClaudeLhc(
+  stage: string,
+  pin: SidecarPin,
+  tarball: string | undefined,
+): SidecarProvenance {
   const sidecarRoot = NodePath.join(stage, LHC_SIDECAR_ARCHIVE_ROOT);
-  const scratch = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3code-lhc-sidecar-src-"));
+  const scratch = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3code-lhc-sidecar-"));
   try {
-    const source = materializeLhcPin(pin, NodePath.join(scratch, "repo"));
-    const lhcPkg = readPackageJson(NodePath.join(source, "packages/lhc/package.json"));
-    const claudePkg = readPackageJson(NodePath.join(source, "packages/claude-lhc/package.json"));
-    const claudeAgentSdk = claudeAgentSdkVersionFromPackage(claudePkg);
+    writePackageJson(NodePath.join(scratch, "package.json"), {
+      name: "t3code-lhc-sidecar-stage",
+      private: true,
+      dependencies: { [pin.package]: sidecarInstallSpec(pin, tarball) },
+    });
+    console.log(`[lhc-archive] installing ${pin.package}@${pin.version} (${tarball ?? "npm"})...`);
+    runNpm(["install", "--omit=dev", "--no-fund", "--no-audit", "--no-package-lock"], scratch);
 
-    const lhcOut = NodePath.join(sidecarRoot, "lhc");
-    buildLhcDist(source, lhcPkg, NodePath.join(lhcOut, "dist"));
-    writePackageJson(NodePath.join(lhcOut, "package.json"), lhcPkg);
-
-    copyTree(
-      NodePath.join(source, "packages/claude-lhc"),
-      sidecarRoot,
-      new Set(["node_modules", "dist", "test", "scripts", "package.json"]),
-    );
-    writePackageJson(
-      NodePath.join(sidecarRoot, "package.json"),
-      packageJsonWithWorkspaceRewrites(claudePkg, { lhc: "file:./lhc" }),
-    );
-    NodeFS.writeFileSync(NodePath.join(sidecarRoot, ".npmrc"), SIDECAR_NPMRC);
-
-    console.log("[lhc-archive] installing claude-lhc JS dependency closure...");
-    runNpm(["install", "--no-fund", "--no-audit"], sidecarRoot);
+    const modules = NodePath.join(scratch, "node_modules");
+    const installed = NodePath.join(modules, pin.package);
+    const pkg = readPackageJson(NodePath.join(installed, "package.json"));
+    assertSidecarPackage(pkg, pin);
+    NodeFS.cpSync(installed, sidecarRoot, { recursive: true, dereference: true });
+    for (const entry of NodeFS.readdirSync(modules)) {
+      if (entry === pin.package || entry === ".bin" || entry.startsWith(".package-lock")) continue;
+      NodeFS.cpSync(
+        NodePath.join(modules, entry),
+        NodePath.join(sidecarRoot, "node_modules", entry),
+        {
+          recursive: true,
+          dereference: true,
+          force: false,
+          errorOnExist: true,
+        },
+      );
+    }
     removeBundledClaudeExecutables(NodePath.join(sidecarRoot, "node_modules"));
-
-    console.log("[lhc-archive] compiling claude-lhc dist/sidecar.js...");
-    const tsc = NodePath.join(sidecarRoot, "node_modules", "typescript", "bin", "tsc");
-    if (!NodeFS.existsSync(tsc)) {
-      throw new Error("claude-lhc install did not provide typescript/bin/tsc");
+    if (!NodeFS.existsSync(NodePath.join(stage, LHC_SIDECAR_LAUNCHER))) {
+      throw new Error(`${pin.package}@${pin.version} has no dist/sidecar.js`);
     }
-    runTsc(tsc, ["-p", "tsconfig.json"], sidecarRoot);
-    const entry = NodePath.join(sidecarRoot, "dist", "sidecar.js");
-    if (!NodeFS.existsSync(entry)) {
-      throw new Error("claude-lhc tsc produced no dist/sidecar.js");
+    if (!NodeFS.existsSync(NodePath.join(sidecarRoot, "node_modules", "lhc", "package.json"))) {
+      throw new Error(`${pin.package}@${pin.version} does not bundle the lhc core`);
     }
-    runNpm(["prune", "--omit=dev", "--no-fund", "--no-audit"], sidecarRoot);
-    materializePackedLhc(sidecarRoot);
-    return { repository: pin.repository, commit: pin.commit, claudeAgentSdk };
+    const source =
+      tarball === undefined
+        ? "npm"
+        : `tarball:${NodeCrypto.createHash("sha256").update(NodeFS.readFileSync(tarball)).digest("hex")}`;
+    return {
+      package: pin.package,
+      version: pin.version,
+      claudeAgentSdk: claudeAgentSdkVersionFromPackage(pkg),
+      source,
+    };
   } finally {
     NodeFS.rmSync(scratch, { recursive: true, force: true });
   }
@@ -415,7 +367,9 @@ function main() {
     throw new Error(`unsupported archive target ${platform}-${arch}`);
   }
   const identity = { version: lhcVersion.version, upstreamTag: lhcVersion.upstreamTag };
-  console.log(`[lhc-archive] archive npm ${LHC_ARCHIVE_NPM_VERSION} at ${assertArchiveNpm()}`);
+  console.log(
+    `[lhc-archive] npm ${runNpm(["--version"], repoRoot).trim()} at ${resolveArchiveNpm()}`,
+  );
 
   if (!options.skipBuild) {
     console.log("[lhc-archive] building server (with web client)...");
@@ -489,8 +443,10 @@ function main() {
     runVp([...STAGE_INSTALL_ARGS], stage);
 
     const pin: SidecarPin = sidecarPin;
-    console.log(`[lhc-archive] staging ${LHC_SIDECAR_ARCHIVE_ROOT} from ${pin.commit}`);
-    const sidecar = stageClaudeLhc(stage, pin);
+    console.log(
+      `[lhc-archive] staging ${LHC_SIDECAR_ARCHIVE_ROOT} from ${pin.package}@${pin.version}`,
+    );
+    const sidecar = stageClaudeLhc(stage, pin, options.sidecarTarball);
 
     const commit = run("git", ["rev-parse", "HEAD"], repoRoot).trim();
     const commitTime = Number(run("git", ["log", "-1", "--format=%ct", "HEAD"], repoRoot).trim());
@@ -608,9 +564,7 @@ function main() {
       if (sidecarPkg.dependencies?.["@anthropic-ai/claude-agent-sdk"] !== packedSdk) {
         throw new Error("post-pack check failed: sidecar Agent SDK pin mismatch");
       }
-      if (sidecarPkg.dependencies?.lhc !== "file:./lhc") {
-        throw new Error("post-pack check failed: sidecar lhc is not file:./lhc");
-      }
+      assertSidecarPackage(sidecarPkg, sidecar);
       const packedLhc = NodePath.join(probe, LHC_SIDECAR_ARCHIVE_ROOT, "node_modules", "lhc");
       const packedLhcReal = NodeFS.realpathSync(packedLhc);
       const probeReal = NodeFS.realpathSync(probe);
