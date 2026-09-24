@@ -6,6 +6,7 @@ one and still GitHub `latest`) follow. Versions are never ordered.
 
 Local builds activated on the live box, all live on 3773 in turn (archive sha256; no tag, no GitHub release):
 
+- 0.0.42-lhc.1-local.6 | upstream v0.0.42 | commit 996d630a29 | sha256 3b58a8570cee37186926d2fcb866eaa00aa50c638a3f801460004371b73e2c0c | installed 2026-09-23, live on 3773 since 23:48:42Z (rollback local.5) | sidecar from the published claude-lhc@0.1.0 (sha256 92a208a2, carries the f5h claim fix); nothing else new
 - 0.0.42-lhc.1-local.5 | upstream v0.0.42 | commit 996d630a29 | sha256 a6d947400c03a64c67a688504e7376e7ca1e365be696883aeeb6930b3314c51a | installed 2026-09-23 | sidecar claude-lhc 0.1.0 from npm (pre-publication pack d3b3ef06, before the f5h claim fix), source releases, Roundtable alpha gate, sidecar thread id
 - 0.0.42-lhc.1-local.3 | upstream v0.0.42 | commit 359816b6f4 | sha256 9866c741554f8bc4d22d030f6079304c915d35407622cff307f8f77e87329fd6 | installed 2026-09-21 | Roundtable rename, member activity, default recipients
 - 0.0.42-lhc.1-local.2 | upstream v0.0.42 | commit db82ea4012 | sha256 4008822504109745284d3953bb89ddf1eca493d78666d8cdf63c0a5c1d47d8f0 | installed 2026-09-21 | groups proxy POST content-type fix
@@ -14,7 +15,6 @@ Local builds activated on the live box, all live on 3773 in turn (archive sha256
 
 Built, not activated:
 
-- 0.0.42-lhc.1-local.6 | upstream v0.0.42 | commit 996d630a29 | sha256 3b58a8570cee37186926d2fcb866eaa00aa50c638a3f801460004371b73e2c0c | built 2026-09-23 | sidecar from the published claude-lhc@0.1.0 (sha256 92a208a2, carries the f5h claim fix); nothing else new; pending activation
 - 0.0.42-lhc.1-local.4 | upstream v0.0.42 | commit e54ff2dffe | sha256 03cc774248a26bfa19b1d220725c1687ad44d14729c1e209bf2dd1d067eeed0e | built 2026-09-22 | sidebar activity indicators; never activated on 3773, superseded by local.5
 
 Promoted archive releases: version, upstream tag, commit, run id, date.
